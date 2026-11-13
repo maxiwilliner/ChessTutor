@@ -114,7 +114,12 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   const isBoardLocked =
     antiImpulseCount > 0 || isOpponentMoving || isEvaluating || isSolved || isFailed;
 
-  const orientation = puzzle.metadata.user_color;
+  // User vs Opponent identification
+  const isUserWhite = puzzle.metadata.user_color === "white";
+  const opponentName = isUserWhite ? puzzle.metadata.black : puzzle.metadata.white;
+  const userColorLabel = isUserWhite ? "Blancas" : "Negras";
+  const opponentColorLabel = isUserWhite ? "Negras" : "Blancas";
+  const orientation = puzzle.metadata.user_color || puzzle.turn || "white";
 
   // Move handler
   const handleMove = async (orig: Key, dest: Key) => {
@@ -157,7 +162,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         setIsOpponentMoving(true);
         setFeedback({
           type: "success",
-          message: "¡Exacto! El oponente responde a tu amenaza...",
+          message: `¡Exacto! ${opponentName} responde a tu amenaza...`,
         });
 
         setTimeout(() => {
@@ -436,10 +441,17 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
         <div className="w-full max-w-[460px] mt-3 flex justify-between items-center text-xs text-slate-400">
           <div className="flex items-center gap-2">
-            <span>Juegan {puzzle.turn === "white" ? "Blancas" : "Negras"}</span>
+            <span className="flex items-center gap-1.5 font-medium text-slate-200">
+              <span
+                className={`w-2.5 h-2.5 rounded-full inline-block border ${
+                  isUserWhite ? "bg-white border-slate-300" : "bg-slate-900 border-slate-600 shadow-sm"
+                }`}
+              />
+              <span>Tu turno ({userColorLabel})</span>
+            </span>
             {isOpponentMoving && (
               <span className="text-cyan-400 font-semibold animate-pulse">
-                (El oponente está respondiendo...)
+                ({opponentName} está respondiendo...)
               </span>
             )}
             {isEvaluating && (
@@ -448,7 +460,9 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
               </span>
             )}
           </div>
-          <span className="font-mono">Movimiento {puzzle.move_number}</span>
+          <span className="font-mono">
+            Movimiento {puzzle.turn === "black" ? `${puzzle.move_number}...` : `${puzzle.move_number}.`}
+          </span>
         </div>
       </div>
 
@@ -461,9 +475,22 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
               <ShieldAlert className="w-5 h-5 text-amber-400" />
               Repetición de Error Real
             </h3>
-            <p className="text-sm text-slate-400 mt-1">
-              Partida contra <span className="text-slate-200 font-semibold">{puzzle.metadata.black}</span> (
-              {puzzle.metadata.opening_name})
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-slate-300">
+                Partida contra <span className="text-white font-bold">{opponentName}</span>
+              </p>
+              <div className="flex items-center gap-1.5 text-xs font-mono">
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700 text-slate-300">
+                  Tú: <strong className={isUserWhite ? "text-slate-100" : "text-amber-300"}>{userColorLabel}</strong>
+                </span>
+                <span className="text-slate-500">vs</span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700 text-slate-400">
+                  Rival: <span className="text-slate-200">{opponentName} ({opponentColorLabel})</span>
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">
+              {puzzle.metadata.opening_name || "Apertura estándar"} ({puzzle.metadata.eco})
             </p>
           </div>
 
@@ -472,7 +499,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
             <div className="text-xs text-red-300 font-medium">Tu jugada en la partida:</div>
             <div className="flex justify-between items-center mt-1">
               <span className="text-base font-bold text-red-400 font-mono">
-                {puzzle.move_number}. {puzzle.user_move.san}
+                {puzzle.turn === "black" ? `${puzzle.move_number}... ` : `${puzzle.move_number}. `}{puzzle.user_move.san}
               </span>
               <span className="text-xs text-red-300 bg-red-950/60 px-2 py-0.5 rounded">
                 -{puzzle.engine_solution.cpl} CPL
