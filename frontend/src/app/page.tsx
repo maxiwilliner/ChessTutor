@@ -42,6 +42,9 @@ export default function HomePage() {
 
         if (data.stage === "complete") {
           sse.close();
+          if (typeof window !== "undefined") {
+            localStorage.setItem("chesstutor_last_username", cleanUser);
+          }
           setTimeout(() => {
             router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`);
           }, 800);

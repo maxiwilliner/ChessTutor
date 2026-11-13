@@ -1,5 +1,6 @@
 import json
 import asyncio
+import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,9 @@ from backend.app.models.puzzles import BlunderBankItem
 from backend.app.modules.chesscom.client import ChessComClient
 from backend.app.modules.engine.evaluator import evaluate_game_smart
 from backend.app.modules.heuristics.aggregator import assemble_diagnosis_and_puzzles
+from backend.app.db.puzzle_service import save_puzzles_idempotent, get_user_puzzles
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 client = ChessComClient()
@@ -58,6 +62,13 @@ async def analysis_event_generator(username: str, time_class: str, limit: int):
             evaluated_games_moves=evaluated_games_moves
         )
 
+        # Persist puzzles in SQLite idempotently (preserving any prior user SRS progress)
+        try:
+            async with AsyncSessionLocal() as session:
+                await save_puzzles_idempotent(session, username, puzzles)
+        except Exception as e:
+            logger.error(f"Error persisting puzzles to database: {e}")
+
         # Store latest analysis in memory cache
         _LATEST_ANALYSIS[username.lower()] = {
             "summary": summary,
@@ -94,12 +105,36 @@ async def get_latest_summary(username: str):
 
 
 @router.get("/puzzles/{username}", response_model=List[BlunderBankItem])
-async def get_latest_puzzles(username: str):
+async def get_latest_puzzles(
+    username: str,
+    theme: Optional[str] = Query(None, description="Filter by tactical theme"),
+    top_leak_only: bool = Query(False, description="Filter by user's top tactical leak"),
+    status: str = Query("all", description="Filter by status: all, unsolved, mastered, review_due"),
+    limit: int = Query(50, ge=1, le=100, description="Max puzzles to return"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Returns the interactive exercises (BlunderBank) generated from the user's mistakes.
+    Pulls from SQLite with Spaced Repetition status, falling back to memory if DB has none.
     """
+    db_puzzles = await get_user_puzzles(
+        session=db,
+        username=username,
+        theme=theme,
+        top_leak_only=top_leak_only,
+        status=status,
+        limit=limit
+    )
+    if db_puzzles:
+        return db_puzzles
+
+    # Fallback to in-memory store if DB was empty (e.g. before DB migration or in mocks)
     analysis = _LATEST_ANALYSIS.get(username.lower())
-    if not analysis:
-        raise HTTPException(status_code=404, detail="No recent analysis found for this user. Run analysis first.")
-    return analysis["puzzles"]
+    if analysis and analysis.get("puzzles"):
+        puzzles = analysis["puzzles"]
+        if theme:
+            puzzles = [p for p in puzzles if p.classification.theme == theme]
+        return puzzles[:limit]
+
+    raise HTTPException(status_code=404, detail="No recent analysis or puzzles found for this user. Run analysis first.")
 

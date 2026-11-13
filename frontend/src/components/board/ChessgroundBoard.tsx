@@ -60,11 +60,12 @@ export const ChessgroundBoard: React.FC<ChessgroundBoardProps> = ({
       fen,
       orientation,
       turnColor,
-      viewOnly,
+      viewOnly: false, // Keep false so event listeners are bound
       movable: {
         free: false,
         color: viewOnly ? undefined : turnColor,
         dests: viewOnly ? new Map() : dests,
+        showDests: !viewOnly,
         events: {
           after: (orig, dest) => {
             if (onMove) {
@@ -72,6 +73,12 @@ export const ChessgroundBoard: React.FC<ChessgroundBoardProps> = ({
             }
           },
         },
+      },
+      draggable: {
+        enabled: !viewOnly,
+      },
+      selectable: {
+        enabled: !viewOnly,
       },
       drawable: {
         enabled: true,
@@ -88,19 +95,36 @@ export const ChessgroundBoard: React.FC<ChessgroundBoardProps> = ({
       },
     };
 
-    if (!cgApiRef.current) {
+    if (!cgApiRef.current || !boardRef.current.hasChildNodes()) {
+      if (cgApiRef.current) {
+        try {
+          cgApiRef.current.destroy();
+        } catch (e) {}
+      }
       cgApiRef.current = Chessground(boardRef.current, config);
     } else {
       cgApiRef.current.set(config);
     }
+
+    return () => {
+      if (cgApiRef.current) {
+        try {
+          cgApiRef.current.destroy();
+        } catch (e) {}
+        cgApiRef.current = null;
+      }
+    };
   }, [fen, orientation, turnColor, viewOnly, shapes]);
 
   return (
     <div className={`relative flex items-center justify-center ${className}`}>
-      <div
-        ref={boardRef}
-        className="w-[340px] h-[340px] sm:w-[460px] sm:h-[460px] rounded-lg shadow-2xl border-4 border-slate-700 overflow-hidden"
-      />
+      <div className="w-[340px] h-[340px] sm:w-[460px] sm:h-[460px] relative rounded-xl shadow-2xl border-4 border-slate-700 overflow-hidden bg-[#b58863]">
+        <div
+          ref={boardRef}
+          className="w-full h-full relative"
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
     </div>
   );
 };

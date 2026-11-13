@@ -124,6 +124,67 @@ export interface BlunderBankItem {
   engine_solution: BlunderEngineSolution;
   classification: BlunderClassification;
   tutor_hints: TutorHints;
+  is_mastered?: boolean;
+  consecutive_correct?: number;
+  next_review_at?: string | null;
+  attempts_count?: number;
+  repeated_blunder_count?: number;
+}
+
+export interface PuzzleAttemptRequest {
+  username: string;
+  puzzle_id: string;
+  played_uci: string;
+  is_solved: boolean;
+  repeated_old_blunder?: boolean;
+  hints_used?: number;
+  time_spent_seconds?: number;
+}
+
+export interface PuzzleAttemptResponse {
+  puzzle_id: string;
+  username: string;
+  is_solved: boolean;
+  consecutive_correct: number;
+  is_mastered: boolean;
+  next_review_at?: string | null;
+  message: string;
+}
+
+export interface EvaluateMoveRequest {
+  puzzle_id: string;
+  played_uci: string;
+  fen?: string;
+}
+
+export interface EvaluateMoveResponse {
+  is_valid: boolean;
+  is_best: boolean;
+  is_historical_blunder: boolean;
+  cpl_diff: number;
+  message: string;
+  opponent_reply_uci?: string | null;
+  opponent_reply_san?: string | null;
+}
+
+export interface TrainerThemeStats {
+  theme: string;
+  total_puzzles: number;
+  solved_puzzles: number;
+  mastered_puzzles: number;
+  success_rate: number;
+}
+
+export interface TrainerStatsResponse {
+  username: string;
+  total_puzzles: number;
+  solved_puzzles: number;
+  mastered_puzzles: number;
+  review_due_puzzles: number;
+  repeated_blunders_count: number;
+  mastery_percentage: number;
+  top_leak_theme?: string | null;
+  themes_breakdown: Record<string, TrainerThemeStats>;
 }
 
 export interface TutorLeak {

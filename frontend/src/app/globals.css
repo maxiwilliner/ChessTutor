@@ -1,16 +1,35 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @import "chessground/assets/chessground.base.css";
 @import "chessground/assets/chessground.brown.css";
 @import "chessground/assets/chessground.cburnett.css";
 
-/* Chessground custom container dimensions */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chessground container sizing */
 .cg-wrap {
   width: 100% !important;
   height: 100% !important;
-  aspect-ratio: 1 / 1;
+  position: relative !important;
+  display: block !important;
+}
+
+cg-container {
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
+}
+
+cg-board {
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  display: block !important;
 }
 
 body {
@@ -18,4 +37,5 @@ body {
   color: #f8fafc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
+
 
