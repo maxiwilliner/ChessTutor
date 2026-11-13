@@ -1,4 +1,5 @@
-from typing import List, Literal, Optional
+from datetime import datetime
+from typing import List, Literal, Optional, Dict
 from pydantic import BaseModel, Field
 
 
@@ -51,4 +52,68 @@ class BlunderBankItem(BaseModel):
     engine_solution: BlunderEngineSolution
     classification: BlunderClassification
     tutor_hints: TutorHints
+    is_mastered: bool = False
+    consecutive_correct: int = 0
+    next_review_at: Optional[datetime] = None
+    attempts_count: int = 0
+    repeated_blunder_count: int = 0
+
+
+# Trainer Request/Response Models
+
+class PuzzleAttemptRequest(BaseModel):
+    username: str
+    puzzle_id: str
+    played_uci: str
+    is_solved: bool
+    repeated_old_blunder: bool = False
+    hints_used: int = 0
+    time_spent_seconds: float = 0.0
+
+
+class PuzzleAttemptResponse(BaseModel):
+    puzzle_id: str
+    username: str
+    is_solved: bool
+    consecutive_correct: int
+    is_mastered: bool
+    next_review_at: Optional[datetime] = None
+    message: str
+
+
+class EvaluateMoveRequest(BaseModel):
+    puzzle_id: str
+    played_uci: str
+    fen: Optional[str] = None
+
+
+class EvaluateMoveResponse(BaseModel):
+    is_valid: bool
+    is_best: bool
+    is_historical_blunder: bool
+    cpl_diff: float
+    message: str
+    opponent_reply_uci: Optional[str] = None
+    opponent_reply_san: Optional[str] = None
+
+
+class TrainerThemeStats(BaseModel):
+    theme: str
+    total_puzzles: int
+    solved_puzzles: int
+    mastered_puzzles: int
+    success_rate: float
+
+
+class TrainerStatsResponse(BaseModel):
+    username: str
+    total_puzzles: int
+    solved_puzzles: int
+    mastered_puzzles: int
+    review_due_puzzles: int
+    repeated_blunders_count: int
+    mastery_percentage: float
+    top_leak_theme: Optional[str] = None
+    themes_breakdown: Dict[str, TrainerThemeStats] = {}
+
 
