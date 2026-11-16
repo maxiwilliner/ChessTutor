@@ -67,4 +67,4 @@ Thumbs.db
 
 # Claude Code (ajustes personales)
 .claude/settings.local.json
-.md
+*.md
