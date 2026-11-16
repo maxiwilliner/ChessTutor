@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make test)",
+      "Bash(./backend/.venv/bin/pytest:*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run lint)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(curl -s http://localhost:8000/*)",
+      "Bash(sqlite3 backend/chess_tutor.db:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./backend/.env)",
+      "Read(./frontend/node_modules/**)",
+      "Read(./frontend/.next/**)",
+      "Read(./backend/.venv/**)",
+      "Read(./backend/bin/**)",
+      "Read(./frontend/package-lock.json)"
+    ]
+  }
+}
