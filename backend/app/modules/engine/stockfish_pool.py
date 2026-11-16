@@ -11,6 +11,22 @@ from backend.app.modules.engine.notation import uci_line_to_san
 logger = logging.getLogger(__name__)
 
 
+def terminal_evaluation(fen: str) -> Optional[PositionEvaluation]:
+    """
+    Game-over positions are scored without the engine: Stockfish answers "score mate 0" for a mated side
+    and python-chess cannot tell who delivered it, so delivering mate with White was scored -10000
+    (and classified as a blunder). Checkmate = ±10000 for the winner; stalemate / dead draw = 0.
+    """
+    board = chess.Board(fen)
+    if board.is_checkmate():
+        score = -10000 if board.turn == chess.WHITE else 10000
+        return PositionEvaluation(fen=fen, depth=99, score_cp=score, mate_in=0)
+    if board.is_stalemate() or board.is_insufficient_material():
+        return PositionEvaluation(fen=fen, depth=99, score_cp=0)
+    return None
+
+
+
 class StockfishWorker:
     def __init__(self, binary_path: str):
         self.binary_path = binary_path
@@ -81,6 +97,10 @@ class StockfishPool:
         time_limit: Optional[float] = None,
         multipv: int = 1
     ) -> PositionEvaluation:
+        terminal = terminal_evaluation(fen)
+        if terminal:
+            return terminal
+
         if not self._is_initialized:
             await self.initialize()
 

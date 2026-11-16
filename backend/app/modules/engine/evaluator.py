@@ -13,7 +13,7 @@ from backend.app.models.chesscom import NormalizedGame
 from backend.app.models.engine import PositionEvaluation, EvaluatedMove
 from backend.app.modules.engine.notation import uci_line_to_san
 from backend.app.modules.engine.scoring import centipawn_loss, classify_move
-from backend.app.modules.engine.stockfish_pool import stockfish_pool
+from backend.app.modules.engine.stockfish_pool import stockfish_pool, terminal_evaluation
 
 
 def determine_phase(board: chess.Board, move_number: int) -> str:
@@ -113,7 +113,10 @@ async def evaluate_many(
     written back to the cache in one statement. The AsyncSession is only used sequentially.
     """
     unique = list(dict.fromkeys(fens))
-    results: Dict[str, PositionEvaluation] = await _load_cached(unique, depth, db_session) if db_session else {}
+    terminal = {fen: ev for fen in unique if (ev := terminal_evaluation(fen))}
+    pending = [fen for fen in unique if fen not in terminal]
+    results: Dict[str, PositionEvaluation] = await _load_cached(pending, depth, db_session) if db_session else {}
+    results.update(terminal)
 
     missing = [fen for fen in unique if fen not in results]
     fresh = await asyncio.gather(

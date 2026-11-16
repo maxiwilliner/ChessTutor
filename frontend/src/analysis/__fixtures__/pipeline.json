@@ -4147,9 +4147,9 @@
     "time_spent_seconds": 5.7,
     "clock_remaining_seconds": 272.1,
     "eval_before_cp": 9900.0,
-    "eval_after_cp": -10000.0,
-    "cpl": 2000.0,
-    "classification": "blunder",
+    "eval_after_cp": 10000.0,
+    "cpl": 0.0,
+    "classification": "best",
     "best_move_uci": "a1a7",
     "best_move_san": "R1a7#",
     "pv_uci": [
@@ -4161,7 +4161,7 @@
     "refutation_uci": [],
     "refutation_san": [],
     "phase": "middlegame",
-    "tactical_theme": "missed_mate",
+    "tactical_theme": null,
     "psychological_tag": "normal"
    }
   ],
@@ -8456,25 +8456,25 @@
    "win_rate": 0.67,
    "draw_rate": 0.0,
    "loss_rate": 0.33,
-   "avg_centipawn_loss": 92.6,
-   "accuracy_score": 71.0
+   "avg_centipawn_loss": 78.5,
+   "accuracy_score": 73.7
   },
   "error_breakdown": {
-   "blunders_total": 11,
+   "blunders_total": 10,
    "errors_total": 3,
    "inaccuracies_total": 5,
-   "blunders_per_game": 1.83
+   "blunders_per_game": 1.67
   },
   "phase_distribution": {
    "opening": {
     "blunders": 3,
     "avg_cpl": 37.0,
-    "percentage_of_blunders": 27.3
+    "percentage_of_blunders": 30.0
    },
    "middlegame": {
-    "blunders": 8,
-    "avg_cpl": 156.2,
-    "percentage_of_blunders": 72.7
+    "blunders": 7,
+    "avg_cpl": 125.9,
+    "percentage_of_blunders": 70.0
    },
    "endgame": {
     "blunders": 0,
@@ -8485,7 +8485,7 @@
   "tactical_motifs": {
    "hanging_piece": {
     "count": 6,
-    "percentage_of_blunders": 42.9,
+    "percentage_of_blunders": 46.2,
     "description": "Piezas propias dejadas sin defensa táctica o captura de piezas rivales envenenadas"
    },
    "pin_exploitation": {
@@ -8495,12 +8495,12 @@
    },
    "fork_overlooked": {
     "count": 1,
-    "percentage_of_blunders": 7.1,
+    "percentage_of_blunders": 7.7,
     "description": "Ataques dobles de caballo o dama desatendidos"
    },
    "missed_mate": {
-    "count": 1,
-    "percentage_of_blunders": 7.1,
+    "count": 0,
+    "percentage_of_blunders": 0.0,
     "description": "Omisión de secuencias forzadas de mate en 1 a 3 jugadas"
    },
    "king_safety_collapse": {
@@ -8510,7 +8510,7 @@
    },
    "tactical_inaccuracy": {
     "count": 6,
-    "percentage_of_blunders": 42.9,
+    "percentage_of_blunders": 46.2,
     "description": "Imprecisión en el cálculo posicional o intercambio desventajoso de material"
    }
   },
@@ -8518,9 +8518,9 @@
    "blunders_under_3s_with_ample_time": 2,
    "blunders_in_time_trouble_under_10s": 0,
    "primary_flaw": "none",
-   "avg_time_on_blunders_seconds": 15.5,
+   "avg_time_on_blunders_seconds": 16.2,
    "avg_time_on_good_moves_seconds": 12.5,
-   "blunder_time_ratio": 1.24
+   "blunder_time_ratio": 1.3
   },
   "opening_repertoire_gaps": [
    {
@@ -8582,17 +8582,17 @@
    {
     "code": "HANGING_PIECES",
     "severity": "CRITICAL",
-    "metric_reference": "42.9% de tus errores graves provienen de piezas colgadas o desprotegidas."
+    "metric_reference": "46.2% de tus errores graves provienen de piezas colgadas o desprotegidas."
    },
    {
     "code": "MIDDLEGAME_COLLAPSE",
     "severity": "MEDIUM",
-    "metric_reference": "72.7% de los errores ocurren durante la fase de medio juego."
+    "metric_reference": "70.0% de los errores ocurren durante la fase de medio juego."
    },
    {
     "code": "GENERAL_TACTICAL_CALCULATION",
     "severity": "MEDIUM",
-    "metric_reference": "Pérdida media de centipeones de 92.6 CPL por jugada."
+    "metric_reference": "Pérdida media de centipeones de 78.5 CPL por jugada."
    }
   ]
  },
@@ -8858,57 +8858,6 @@
     "level_1_conceptual": "¿Cuál es la debilidad más evidente en la posición rival?",
     "level_2_directional": "Busca la jugada más activa hacia d3.",
     "level_3_concrete": "La continuación recomendada por el motor es Rxd3."
-   },
-   "is_mastered": false,
-   "consecutive_correct": 0,
-   "next_review_at": null,
-   "attempts_count": 0,
-   "repeated_blunder_count": 0
-  },
-  {
-   "id": "bb_1000000_m24_white",
-   "game_url": "https://www.chess.com/game/live/1000000",
-   "metadata": {
-    "white": "demo_player",
-    "black": "rival_1",
-    "user_color": "white",
-    "eco": "D04",
-    "opening_name": "Colle System",
-    "time_control": "600"
-   },
-   "move_number": 24,
-   "turn": "white",
-   "fen_before": "R2r1b1r/1k1q2pp/1pp1pp2/1P4B1/2PPN1n1/3n1N2/1P3PPP/R5K1 w - - 2 24",
-   "user_move": {
-    "uci": "a1a7",
-    "san": "R1a7#",
-    "time_spent_seconds": 5.7,
-    "clock_remaining_seconds": 272.1
-   },
-   "engine_solution": {
-    "best_move_uci": "a1a7",
-    "best_move_san": "R1a7#",
-    "eval_before": 99.0,
-    "eval_after_user_move": -100.0,
-    "cpl": 2000.0,
-    "pv_uci": [
-     "a1a7"
-    ],
-    "pv_san": [
-     "R1a7#"
-    ],
-    "refutation_uci": [],
-    "refutation_san": []
-   },
-   "classification": {
-    "phase": "middlegame",
-    "theme": "missed_mate",
-    "psychological_tag": "normal"
-   },
-   "tutor_hints": {
-    "level_1_conceptual": "El rey rival está en una red de mate. ¡Calcula jugadas forzadas!",
-    "level_2_directional": "Da un jaque implacable llevando tu pieza a a7.",
-    "level_3_concrete": "La jugada ganadora es R1a7#, conduciendo al mate inevitable."
    },
    "is_mastered": false,
    "consecutive_correct": 0,
@@ -9520,26 +9469,26 @@
  ],
  "report": {
   "greeting": "¡Hola demo_player! He analizado tus 6 partidas recientes en ritmo rapid (Rating actual: 729).",
-  "overview": "Tu tasa de victorias es del 67% con una puntuación de precisión del 71.0/100 y una pérdida media de 92.6 centipeones por jugada. Tu juego tiene una base sólida, pero existen 3 patrones muy claros y recurrentes donde se está escapando la mayor parte de tu Elo.",
+  "overview": "Tu tasa de victorias es del 67% con una puntuación de precisión del 73.7/100 y una pérdida media de 78.5 centipeones por jugada. Tu juego tiene una base sólida, pero existen 3 patrones muy claros y recurrentes donde se está escapando la mayor parte de tu Elo.",
   "top_3_leaks": [
    {
     "title": "Fuga #1: Piezas Colgadas e Indefensas en Medio Juego",
     "severity": "CRITICAL",
-    "explanation": "El 42.9% de tus fallos graves ocurren al dejar piezas sin suficiente apoyo táctico o al no advertir que una pieza propia está sobrecargada. En partidas de ritmo rápido, tiendes a enfocarte en tu plan de ataque y olvidas preguntarte qué amenaza el rival.",
+    "explanation": "El 46.2% de tus fallos graves ocurren al dejar piezas sin suficiente apoyo táctico o al no advertir que una pieza propia está sobrecargada. En partidas de ritmo rápido, tiendes a enfocarte en tu plan de ataque y olvidas preguntarte qué amenaza el rival.",
     "tactical_concept": "Principio LPDO de John Nunn ('Loose Pieces Drop Off' / Las piezas sueltas caen).",
     "actionable_advice": "Antes de confirmar cualquier jugada, haz un escaneo de seguridad de 2 segundos: '¿Alguna de mis piezas queda sin defensa tras este movimiento?'."
    },
    {
     "title": "Fuga #2: Derrumbe en el medio juego",
     "severity": "MEDIUM",
-    "explanation": "72.7% de los errores ocurren durante la fase de medio juego.",
+    "explanation": "70.0% de los errores ocurren durante la fase de medio juego.",
     "tactical_concept": "Cálculo Táctico y Prevención de Errores.",
     "actionable_advice": "Dedica 15 minutos diarios a resolver ejercicios tácticos basados en tus propios errores."
    },
    {
     "title": "Fuga #3: Precisión táctica general",
     "severity": "MEDIUM",
-    "explanation": "Pérdida media de centipeones de 92.6 CPL por jugada.",
+    "explanation": "Pérdida media de centipeones de 78.5 CPL por jugada.",
     "tactical_concept": "Cálculo Táctico y Prevención de Errores.",
     "actionable_advice": "Dedica 15 minutos diarios a resolver ejercicios tácticos basados en tus propios errores."
    }

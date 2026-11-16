@@ -103,3 +103,15 @@ def test_game_accuracy_punishes_blunders():
     plain_mean = sum(move_accuracy(m.eval_before_cp, m.eval_after_cp) for m in one_blunder) / len(one_blunder)
     assert plain_mean > 95.0
     assert game_accuracy(one_blunder) < plain_mean - 5.0
+
+
+@pytest.mark.asyncio
+async def test_delivering_checkmate_is_not_a_blunder():
+    from backend.app.modules.engine.evaluator import evaluate_many, terminal_evaluation, get_player_eval
+    # Scholar's mate: 4.Qxf7# by White, and a Black mate (fool's mate) for symmetry
+    white_mates = "r1bqkbnr/pppp1Qpp/2n5/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4"
+    black_mates = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
+    assert terminal_evaluation(white_mates).score_cp == 10000
+    assert terminal_evaluation(black_mates).score_cp == -10000
+    [ev] = await evaluate_many([white_mates], depth=10, time_limit=None)
+    assert classify_move(9900, get_player_eval(ev.score_cp, True)) in ("best", "good")
