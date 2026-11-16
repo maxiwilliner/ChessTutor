@@ -56,7 +56,7 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
                     title=f"Fuga #{idx}: Juego Reactivo e Impulsivo",
                     severity=flag.severity,
                     explanation=(
-                        f"Cometiste {clk.blunders_under_3s_with_ample_time} errores críticos en menos de 3 segundos mientras disponías de abundante tiempo en tu reloj. "
+                        f"Cometiste {clk.blunders_under_3s_with_ample_time} errores críticos jugando al instante mientras disponías de abundante tiempo en tu reloj. "
                         f"Tu tiempo medio en jugadas buenas es de {clk.avg_time_on_good_moves_seconds}s, pero en tus blunders cae a {clk.avg_time_on_blunders_seconds}s. "
                         "Juegas por inercia o reflejo en lugar de calcular."
                     ),
@@ -70,7 +70,7 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
                     title=f"Fuga #{idx}: Colapso por Apuro de Tiempo",
                     severity=flag.severity,
                     explanation=(
-                        f"Se registraron {clk.blunders_in_time_trouble_under_10s} errores graves con menos de 10 segundos en el reloj. "
+                        f"Se registraron {clk.blunders_in_time_trouble_under_10s} errores graves con el reloj casi agotado. "
                         "Llegas al medio juego tardío habiendo consumido demasiado tiempo en decisiones tempranas no críticas."
                     ),
                     tactical_concept="Gestión Progresiva del Tiempo de Juego.",

@@ -1,5 +1,5 @@
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import List, Dict, Tuple
 import chess
@@ -283,9 +283,8 @@ def assemble_diagnosis_and_puzzles(
             evals_at_12.append(m12_eval)
 
         avg_m12 = round((sum(evals_at_12) / len(evals_at_12)) / 100.0, 2) if evals_at_12 else 0.0
-        dominant_motif = "none"
-        if blunder_themes_in_op:
-            dominant_motif = max(set(blunder_themes_in_op), key=blunder_themes_in_op.count)
+        # most_common breaks ties by first appearance (max over a set depended on hash order)
+        dominant_motif = Counter(blunder_themes_in_op).most_common(1)[0][0] if blunder_themes_in_op else "none"
 
         opening_gaps.append(
             OpeningGap(
@@ -321,7 +320,7 @@ def assemble_diagnosis_and_puzzles(
             AlgorithmicFlag(
                 code="IMPULSIVE_MOVE_SELECTION",
                 severity="HIGH",
-                metric_reference=f"{clock_stats.blunders_under_3s_with_ample_time} errores cometidos en menos de 3 segundos con abundancia de tiempo en el reloj."
+                metric_reference=f"{clock_stats.blunders_under_3s_with_ample_time} errores jugados al instante con tiempo de sobra en el reloj."
             )
         )
     elif clock_stats.primary_flaw == "time_trouble_panic":
