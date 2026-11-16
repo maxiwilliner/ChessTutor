@@ -110,7 +110,8 @@ async def get_latest_puzzles(
     theme: Optional[str] = Query(None, description="Filter by tactical theme"),
     top_leak_only: bool = Query(False, description="Filter by user's top tactical leak"),
     status: str = Query("all", description="Filter by status: all, unsolved, mastered, review_due"),
-    limit: int = Query(50, ge=1, le=100, description="Max puzzles to return"),
+    psych_tag: Optional[str] = Query(None, pattern="^(impulsive|time_trouble|normal)$", description="Filter by clock psychology tag"),
+    limit: int = Query(200, ge=1, le=500, description="Max puzzles to return"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -123,7 +124,8 @@ async def get_latest_puzzles(
         theme=theme,
         top_leak_only=top_leak_only,
         status=status,
-        limit=limit
+        limit=limit,
+        psych_tag=psych_tag,
     )
     if db_puzzles:
         return db_puzzles
@@ -134,6 +136,8 @@ async def get_latest_puzzles(
         puzzles = analysis["puzzles"]
         if theme:
             puzzles = [p for p in puzzles if p.classification.theme == theme]
+        if psych_tag:
+            puzzles = [p for p in puzzles if p.classification.psychological_tag == psych_tag]
         return puzzles[:limit]
 
     raise HTTPException(status_code=404, detail="No recent analysis or puzzles found for this user. Run analysis first.")

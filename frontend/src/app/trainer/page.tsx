@@ -96,10 +96,10 @@ function TrainerContent() {
       const filter: GetPuzzlesFilter = {};
       if (activeMode === "leak") filter.top_leak_only = true;
       else if (activeMode === "theme") filter.theme = selectedTheme;
+      else if (activeMode === "impulse") filter.psych_tag = "impulsive";
       if (onlyReviewDue) filter.status = "review_due";
 
-      const data = await getPuzzles(username, filter);
-      setPuzzles(activeMode === "impulse" ? data.filter((p) => p.classification.psychological_tag === "impulsive") : data);
+      setPuzzles(await getPuzzles(username, filter));
       setCurrentIndex(0);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se encontraron ejercicios con este filtro.");

@@ -1,11 +1,15 @@
 import json
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Iterable, List, Optional
-from sqlalchemy import select, func, and_, or_, delete, exists
+from sqlalchemy import select, func, and_, or_, delete, exists, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
 
 from backend.app.modules.engine.notation import uci_line_to_san
+
+
+# Catch-all motif: never the "top leak", it says nothing about what to train.
+GENERIC_THEME = "tactical_inaccuracy"
 
 
 def utc_now_naive() -> datetime:
@@ -108,7 +112,8 @@ async def get_user_puzzles(
     theme: Optional[str] = None,
     top_leak_only: bool = False,
     status: str = "all",
-    limit: int = 50
+    limit: int = 50,
+    psych_tag: Optional[str] = None,
 ) -> List[BlunderBankItem]:
     """
     Retrieves puzzles for the specified user, enriched with user's SRS progress.
@@ -121,7 +126,7 @@ async def get_user_puzzles(
     if top_leak_only and not target_theme:
         top_theme_query = (
             select(BlunderBankEntity.theme, func.count(BlunderBankEntity.id).label("cnt"))
-            .where(BlunderBankEntity.username == clean_username)
+            .where(BlunderBankEntity.username == clean_username, BlunderBankEntity.theme != GENERIC_THEME)
             .group_by(BlunderBankEntity.theme)
             .order_by(func.count(BlunderBankEntity.id).desc())
             .limit(1)
@@ -145,6 +150,8 @@ async def get_user_puzzles(
 
     if target_theme:
         query = query.where(BlunderBankEntity.theme == target_theme)
+    if psych_tag:
+        query = query.where(BlunderBankEntity.psychological_tag == psych_tag)
 
     now = utc_now_naive()
     if status == "unsolved":
@@ -164,7 +171,14 @@ async def get_user_puzzles(
             )
         )
 
-    query = query.order_by(BlunderBankEntity.created_at.desc()).limit(limit)
+    # Training order: reviews due -> never seen -> in progress -> mastered; worst mistakes first.
+    priority = case(
+        (and_(UserPuzzleProgressEntity.next_review_at.is_not(None), UserPuzzleProgressEntity.next_review_at <= now), 0),
+        (UserPuzzleProgressEntity.id.is_(None), 1),
+        (UserPuzzleProgressEntity.is_mastered == True, 3),  # noqa: E712
+        else_=2,
+    )
+    query = query.order_by(priority, BlunderBankEntity.cpl.desc(), BlunderBankEntity.id).limit(limit)
     rows = (await session.execute(query)).all()
 
     items: List[BlunderBankItem] = []
@@ -282,11 +296,14 @@ async def record_puzzle_attempt(
         progress.repeated_old_blunder_count += 1
 
     # Spaced Repetition Logic
-    if req.is_solved:
-        if req.hints_used == 0:
-            progress.consecutive_correct += 1
-        else:
-            progress.consecutive_correct = max(1, progress.consecutive_correct)
+    if req.is_solved and (req.hints_used > 0 or req.mistakes > 0):
+        # Solved with help: not a clean recall. The streak restarts and it comes back tomorrow.
+        progress.consecutive_correct = 0
+        progress.is_mastered = False
+        progress.next_review_at = now + timedelta(days=1)
+        msg = "Resuelto con ayuda. Lo repasamos mañana para fijarlo sin pistas."
+    elif req.is_solved:
+        progress.consecutive_correct += 1
 
         if progress.consecutive_correct >= 3:
             progress.is_mastered = True
@@ -376,8 +393,9 @@ async def get_user_trainer_stats(
 
     # Top leak theme
     top_leak_theme = None
-    if theme_counts:
-        top_leak_theme = max(theme_counts.keys(), key=lambda t: theme_counts[t]["total"])
+    specific = {t: c for t, c in theme_counts.items() if t != GENERIC_THEME} or theme_counts
+    if specific:
+        top_leak_theme = max(specific.keys(), key=lambda t: specific[t]["total"])
 
     themes_breakdown: Dict[str, TrainerThemeStats] = {}
     for th, counts in theme_counts.items():

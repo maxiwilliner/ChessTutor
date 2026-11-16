@@ -110,6 +110,9 @@ export interface BlunderEngineSolution {
   cpl: number;
   pv_uci: string[];
   pv_san: string[];
+  /** Mejor respuesta del rival tras la jugada del usuario (vacío en ejercicios antiguos). */
+  refutation_uci?: string[];
+  refutation_san?: string[];
 }
 
 export interface BlunderClassification {
@@ -149,6 +152,8 @@ export interface PuzzleAttemptRequest {
   is_solved: boolean;
   repeated_old_blunder?: boolean;
   hints_used?: number;
+  /** Jugadas incorrectas antes de resolver. */
+  mistakes?: number;
   time_spent_seconds?: number;
 }
 

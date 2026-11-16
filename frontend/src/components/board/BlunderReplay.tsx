@@ -27,6 +27,7 @@ import {
   ExternalLink,
   Loader2,
   History,
+  HelpCircle,
 } from "lucide-react";
 
 interface BlunderReplayProps {
@@ -94,8 +95,12 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   const [hintLevel, setHintLevel] = useState(0);
   const [feedback, setFeedback] = useState<{ type: FeedbackType; message: string }>({ type: "idle", message: "" });
 
+  const [explaining, setExplaining] = useState(false);
+  const snapshotRef = useRef<{ fen: string; arrows: DrawShape[]; lastMove: [Key, Key] | null; evalWhite: number } | null>(null);
+
   const timerStartRef = useRef(0);
   const attemptsCountRef = useRef(0);
+  const mistakesRef = useRef(0);
   const timeoutsRef = useRef<number[]>([]);
 
   const later = (fn: () => void, ms: number) => {
@@ -120,7 +125,9 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setFeedback({ type: "idle", message: "" });
     setPvStepIndex(0);
     setPlayed([]);
+    setExplaining(false);
     attemptsCountRef.current = 0;
+    mistakesRef.current = 0;
 
     const pv = puzzle.engine_solution.pv_uci?.length ? puzzle.engine_solution.pv_uci : [puzzle.engine_solution.best_move_uci];
     activePvRef.current = pv.slice(0, 5);
@@ -147,7 +154,10 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   // Limpiar temporizadores pendientes al desmontar
   useEffect(() => () => timeoutsRef.current.forEach((t) => window.clearTimeout(t)), []);
 
-  const isBoardLocked = antiImpulseCount > 0 || isOpponentMoving || isEvaluating || isSolved || isFailed;
+  const isBoardLocked = antiImpulseCount > 0 || isOpponentMoving || isEvaluating || isSolved || isFailed || explaining;
+  const refutationUci = puzzle.engine_solution.refutation_uci ?? [];
+  const refutationSan = puzzle.engine_solution.refutation_san ?? [];
+  const canExplain = (isSolved || isFailed) && refutationUci.length > 0 && !isOpponentMoving;
   const elapsedSeconds = () => Math.max(1, (Date.now() - timerStartRef.current) / 1000);
 
   const finishPuzzleSuccess = (lastUci: string, isFirstTry: boolean, message: string) => {
@@ -165,6 +175,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
       is_solved: true,
       repeated_old_blunder: false,
       hints_used: hintLevel,
+      mistakes: mistakesRef.current,
       time_spent_seconds: elapsedSeconds(),
     }).catch(console.error);
 
@@ -300,6 +311,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           finishPuzzleSuccess(playedUci, isFirstTry, evalRes.message);
         }
       } else {
+        mistakesRef.current += 1;
         setArrows([{ orig, dest, brush: "red" }]);
         setEffect("shake");
         const before = puzzle.engine_solution.eval_before;
@@ -311,6 +323,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         }, 1400);
       }
     } catch {
+      mistakesRef.current += 1;
       setIsEvaluating(false);
       setEffect("shake");
       setFeedback({ type: "warning", message: "Jugada legal, pero no es la idea ganadora. Prueba otra." });
@@ -334,12 +347,16 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setLastMove(null);
     setEffect(null);
     setConfettiKey(null);
+    setExplaining(false);
     setEvalWhite(toWhite(puzzle.engine_solution.eval_before));
     setFeedback({ type: "idle", message: "" });
     timerStartRef.current = Date.now();
   };
 
   const handleRevealSolution = () => {
+    timeoutsRef.current.forEach((t) => window.clearTimeout(t));
+    timeoutsRef.current = [];
+    setExplaining(false);
     const best = puzzle.engine_solution.best_move_uci.toLowerCase();
     chessRef.current = new Chess(puzzle.fen_before);
     setBoardFen(puzzle.fen_before);
@@ -359,7 +376,8 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
       username,
       puzzle_id: puzzle.id,
       played_uci: best,
-      is_solved: true,
+      // Ver la solución no es resolver: el ejercicio vuelve a la cola de repaso.
+      is_solved: false,
       repeated_old_blunder: false,
       hints_used: 3,
       time_spent_seconds: elapsedSeconds(),
@@ -369,6 +387,66 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   };
 
   const handleAskHint = () => setHintLevel((prev) => Math.min(3, prev + 1));
+
+  /** Reproduce en el tablero tu jugada de la partida y la respuesta del rival que la castiga. */
+  const handleExplain = () => {
+    if (!canExplain) return;
+    snapshotRef.current = { fen: boardFen, arrows, lastMove, evalWhite };
+    setExplaining(true);
+    const board = new Chess(puzzle.fen_before);
+    const blunder = puzzle.user_move.uci.toLowerCase();
+    const steps = [blunder, ...refutationUci.map((u) => u.toLowerCase())];
+    setBoardFen(puzzle.fen_before);
+    setLastMove(null);
+    setArrows([]);
+    setSyncKey((k) => k + 1);
+    setFeedback({
+      type: "info",
+      message: `En la partida jugaste ${puzzle.user_move.san}. Mira cómo responde ${opponentName}…`,
+    });
+
+    steps.forEach((uci, i) => {
+      later(() => {
+        const from = toKey(uci.slice(0, 2));
+        const to = toKey(uci.slice(2, 4));
+        try {
+          board.move({ from, to, promotion: uci[4] || "q" });
+        } catch {
+          return;
+        }
+        setBoardFen(board.fen());
+        setLastMove([from, to]);
+        setArrows([{ orig: from, dest: to, brush: i === 0 ? "red" : "paleBlue" }]);
+        if (i === 0) setEvalWhite(toWhite(puzzle.engine_solution.eval_after_user_move));
+        if (i === steps.length - 1) {
+          setFeedback({
+            type: "error",
+            message:
+              `Tras ${moveLabel} ${puzzle.user_move.san}, ${opponentName} responde ${refutationSan[0] ?? ""}` +
+              (refutationSan.length > 1 ? ` y la línea sigue ${refutationSan.slice(1).join(" ")}` : "") +
+              `. La evaluación pasa de ${fmtEval(puzzle.engine_solution.eval_before)} a ${fmtEval(
+                puzzle.engine_solution.eval_after_user_move
+              )}. La clave era ${puzzle.engine_solution.best_move_san}.`,
+          });
+        }
+      }, 500 + i * 900);
+    });
+  };
+
+  const handleEndExplain = () => {
+    timeoutsRef.current.forEach((t) => window.clearTimeout(t));
+    timeoutsRef.current = [];
+    const snap = snapshotRef.current;
+    if (snap) {
+      setBoardFen(snap.fen);
+      setArrows(snap.arrows);
+      setLastMove(snap.lastMove);
+      setEvalWhite(snap.evalWhite);
+    }
+    setSyncKey((k) => k + 1);
+    setExplaining(false);
+    setFeedback({ type: "idle", message: "" });
+  };
 
   // Pistas visuales: 2 = casilla de origen, 3 = flecha completa
   const shapes = useMemo<DrawShape[]>(() => {
@@ -391,8 +469,9 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
       if (key === "arrowright") onNext();
       else if (key === "arrowleft") onPrev?.();
       else if (key === "h" && !isSolved && hintLevel < 3) handleAskHint();
-      else if (key === "r") handleReset();
-      else if (key === "s" && !isSolved) handleRevealSolution();
+      else if (key === "r" && !explaining) handleReset();
+      else if (key === "s" && !isSolved && !explaining) handleRevealSolution();
+      else if (key === "e") (explaining ? handleEndExplain : handleExplain)();
       else return;
       e.preventDefault();
     };
@@ -611,6 +690,21 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
         {/* Acciones */}
         <div className="space-y-3">
+          {explaining ? (
+            <Button variant="secondary" className="w-full" onClick={handleEndExplain}>
+              <RotateCcw className="h-4 w-4" aria-hidden />
+              Volver a la posición
+            </Button>
+          ) : (
+            canExplain && (
+              <Button variant="danger" className="w-full" onClick={handleExplain}>
+                <HelpCircle className="h-4 w-4" aria-hidden />
+                ¿Por qué fue un error?
+                <Kbd className="ml-1 hidden sm:inline-flex">E</Kbd>
+              </Button>
+            )
+          )}
+
           {isSolved &&
             puzzle.engine_solution.pv_san?.length > 3 &&
             (showingEngineContinuation ? (
@@ -646,7 +740,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
           <p className="hidden items-center justify-center gap-1.5 text-[11px] text-ivory-faint sm:flex">
             <Kbd>←</Kbd>
-            <Kbd>→</Kbd> navegar · <Kbd>H</Kbd> pista · <Kbd>R</Kbd> reiniciar · <Kbd>S</Kbd> solución
+            <Kbd>→</Kbd> navegar · <Kbd>H</Kbd> pista · <Kbd>R</Kbd> reiniciar · <Kbd>S</Kbd> solución · <Kbd>E</Kbd> por qué
           </p>
         </div>
       </Card>

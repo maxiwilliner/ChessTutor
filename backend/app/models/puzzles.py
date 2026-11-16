@@ -71,6 +71,8 @@ class PuzzleAttemptRequest(BaseModel):
     is_solved: bool
     repeated_old_blunder: bool = False
     hints_used: int = 0
+    # Wrong moves played before solving (each one evaluated by the engine)
+    mistakes: int = 0
     time_spent_seconds: float = 0.0
 
 

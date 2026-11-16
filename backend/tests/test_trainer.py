@@ -340,3 +340,58 @@ async def test_reanalysis_removes_stale_puzzles_but_keeps_practised_ones():
     assert stale.id not in ids          # no longer qualifies and was never practised
     assert practised.id in ids          # has SRS progress -> kept
     assert other_game.id in ids         # belongs to a game that was not re-analysed
+
+
+@pytest.mark.asyncio
+async def test_solving_with_help_does_not_build_the_streak():
+    await init_db()
+    uid = uuid.uuid4().hex[:8]
+    user = f"help_{uid}"
+    p = sample_puzzle(puzzle_id=f"bb_help{uid}_m1_white", username=user)
+    async with AsyncSessionLocal() as session:
+        await save_puzzles_idempotent(session, user, [p])
+        clean = PuzzleAttemptRequest(username=user, puzzle_id=p.id, played_uci="d1d8", is_solved=True)
+        assert (await record_puzzle_attempt(session, clean)).consecutive_correct == 1
+        assert (await record_puzzle_attempt(session, clean)).consecutive_correct == 2
+
+        # Revealing the solution (hints_used=3) or solving after wrong moves is not a clean recall
+        with_hints = PuzzleAttemptRequest(username=user, puzzle_id=p.id, played_uci="d1d8", is_solved=True, hints_used=1)
+        res = await record_puzzle_attempt(session, with_hints)
+        assert res.consecutive_correct == 0 and res.is_mastered is False
+
+        after_mistakes = PuzzleAttemptRequest(username=user, puzzle_id=p.id, played_uci="d1d8", is_solved=True, mistakes=2)
+        res = await record_puzzle_attempt(session, after_mistakes)
+        assert res.consecutive_correct == 0
+        assert res.next_review_at is not None
+
+
+@pytest.mark.asyncio
+async def test_top_leak_ignores_generic_theme_and_training_order():
+    await init_db()
+    uid = uuid.uuid4().hex[:8]
+    user = f"order_{uid}"
+    generic = [sample_puzzle(puzzle_id=f"bb_o{uid}_m{i}_white", username=user, theme="tactical_inaccuracy") for i in range(3)]
+    fork = sample_puzzle(puzzle_id=f"bb_o{uid}_m9_white", username=user, theme="fork_overlooked")
+    fork.classification.psychological_tag = "normal"
+    severe = sample_puzzle(puzzle_id=f"bb_o{uid}_m8_white", username=user, theme="tactical_inaccuracy")
+    severe.engine_solution.cpl = 900.0
+
+    async with AsyncSessionLocal() as session:
+        await save_puzzles_idempotent(session, user, generic + [fork, severe])
+        stats = await get_user_trainer_stats(session, user)
+        assert stats.top_leak_theme == "fork_overlooked"
+
+        leak = await get_user_puzzles(session, user, top_leak_only=True)
+        assert [p.id for p in leak] == [fork.id]
+
+        # Mastered puzzles go last; unseen puzzles are ordered by severity
+        for _ in range(3):
+            await record_puzzle_attempt(session, PuzzleAttemptRequest(
+                username=user, puzzle_id=severe.id, played_uci="d1d8", is_solved=True))
+        ordered = await get_user_puzzles(session, user)
+        assert ordered[-1].id == severe.id
+        assert ordered[0].engine_solution.cpl >= ordered[1].engine_solution.cpl
+
+        impulsive = await get_user_puzzles(session, user, psych_tag="impulsive")
+        assert fork.id not in {p.id for p in impulsive}
+        assert len(impulsive) == 4
