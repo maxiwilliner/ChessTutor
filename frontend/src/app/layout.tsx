@@ -4,6 +4,8 @@ import Link from "next/link";
 import "./globals.css";
 import { KnightMark } from "@/components/layout/KnightMark";
 import { MobileTabBar, NavLinks } from "@/components/layout/NavLinks";
+import { DemoBanner, DemoFooterControls } from "@/components/layout/DemoNotice";
+import { APP_MODE } from "@/lib/mode";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["opsz"] });
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -46,14 +48,25 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <NavLinks />
           </div>
         </header>
+        {APP_MODE === "demo" && <DemoBanner />}
 
-        <main id="contenido" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-8 sm:px-6 sm:pb-12 lg:px-8">
+        <main
+          id="contenido"
+          className={`mx-auto w-full max-w-7xl flex-1 px-4 pt-8 sm:px-6 sm:pb-12 lg:px-8 ${APP_MODE === "demo" ? "pb-12" : "pb-28"}`}
+        >
           {children}
         </main>
 
-        <footer className="hidden border-t border-ink-600/50 py-6 text-center text-xs text-ivory-faint sm:block">
+        <footer
+          className={
+            APP_MODE === "demo"
+              ? "border-t border-ink-600/50 pb-28 pt-6 text-center text-xs text-ivory-faint sm:pb-6"
+              : "hidden border-t border-ink-600/50 py-6 text-center text-xs text-ivory-faint sm:block"
+          }
+        >
           <div className="mx-auto max-w-7xl px-4">
-            ChessTutor · Cálculo con Stockfish 16 y python-chess · Datos públicos de Chess.com
+            ChessTutor · Análisis con Stockfish · Datos públicos de Chess.com
+            {APP_MODE === "demo" && <DemoFooterControls />}
           </div>
         </footer>
 

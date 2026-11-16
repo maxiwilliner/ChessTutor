@@ -5,7 +5,7 @@ import { Key } from "chessground/types";
 import { DrawShape } from "chessground/draw";
 import { Chess } from "chess.js";
 import { BlunderBankItem, EvaluateMoveResponse } from "@/types/api";
-import { evaluateMove, submitPuzzleAttempt } from "@/lib/api";
+import { store } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import { PHASE_LABEL, PSYCH_LABEL, themeMeta } from "@/lib/labels";
 import { ChessgroundBoard, BoardEffect } from "./ChessgroundBoard";
@@ -168,7 +168,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setEvalWhite(toWhite(puzzle.engine_solution.eval_before));
     if (isFirstTry) setConfettiKey(Date.now());
 
-    submitPuzzleAttempt({
+    store.submitAttempt({
       username,
       puzzle_id: puzzle.id,
       played_uci: lastUci,
@@ -263,7 +263,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         )} centipeones. Reinicia y busca otra idea.`,
       });
 
-      submitPuzzleAttempt({
+      store.submitAttempt({
         username,
         puzzle_id: puzzle.id,
         played_uci: playedUci,
@@ -285,11 +285,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setFeedback({ type: "info", message: `Analizando ${userSan} con el motor…` });
 
     try {
-      const evalRes: EvaluateMoveResponse = await evaluateMove({
-        puzzle_id: puzzle.id,
-        played_uci: playedUci,
-        fen: chess.fen(),
-      });
+      const evalRes: EvaluateMoveResponse = await store.evaluateMove(puzzle, playedUci, chess.fen());
       setIsEvaluating(false);
 
       if (evalRes.is_valid) {
@@ -372,7 +368,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setIsFailed(false);
     setEvalWhite(toWhite(puzzle.engine_solution.eval_before));
 
-    submitPuzzleAttempt({
+    store.submitAttempt({
       username,
       puzzle_id: puzzle.id,
       played_uci: best,

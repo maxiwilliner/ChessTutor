@@ -68,3 +68,7 @@ Thumbs.db
 # Claude Code (ajustes personales)
 .claude/settings.local.json
 *.md
+
+# Demo estática: motor copiado desde node_modules y salida del build
+frontend/public/engine/
+frontend/out/

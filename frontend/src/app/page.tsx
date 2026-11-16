@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createAnalysisEventSource } from "@/lib/api";
+import { store } from "@/lib/store";
 import { useLastUsername } from "@/lib/useLastUsername";
 import { DemoBoard } from "@/components/board/DemoBoard";
 import { Button } from "@/components/ui/Button";
@@ -53,13 +53,13 @@ export default function HomePage() {
   const [gamesLimit, setGamesLimit] = useState(15);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const sseRef = useRef<EventSource | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Prefill desde ?username= (p. ej. "Volver a analizar" en el diagnóstico)
     const fromUrl = new URLSearchParams(window.location.search).get("username");
     if (fromUrl) setUsername(fromUrl);
-    return () => sseRef.current?.close();
+    return () => abortRef.current?.abort();
   }, []);
 
   const isAnalyzing = progress !== null && !errorMessage;
@@ -67,47 +67,42 @@ export default function HomePage() {
   const start = () => {
     const cleanUser = username.trim();
     if (!cleanUser) return;
-    sseRef.current?.close();
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setErrorMessage("");
     setProgress({ stage: "fetching_games", pct: 3, message: `Conectando con Chess.com para ${cleanUser}…` });
 
-    const sse = createAnalysisEventSource(cleanUser, timeClass, gamesLimit);
-    sseRef.current = sse;
-
-    sse.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.stage === "error") {
-          setErrorMessage(data.message);
-          sse.close();
-          return;
-        }
-        const stage: Stage = data.stage === "evaluating_start" ? "evaluating" : data.stage;
-        setProgress({
-          stage,
-          pct: data.progress_pct ?? 0,
-          message: data.message ?? "",
-          current: data.current_game,
-          total: data.total_games,
-        });
-        if (data.stage === "complete") {
-          sse.close();
-          saveLastUser(cleanUser);
-          window.setTimeout(() => router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`), 700);
-        }
-      } catch (err) {
-        console.error("SSE parse error", err);
-      }
-    };
-
-    sse.onerror = () => {
-      sse.close();
-      setErrorMessage("No se pudo conectar con el servidor de análisis. Comprueba que el backend esté en marcha.");
-    };
+    store
+      .analyze({
+        username: cleanUser,
+        timeClass,
+        limit: gamesLimit,
+        signal: controller.signal,
+        onProgress: (data) => {
+          if (data.stage === "error") return;
+          const stage: Stage = data.stage === "evaluating_start" ? "evaluating" : data.stage;
+          setProgress({
+            stage,
+            pct: data.progress_pct ?? 0,
+            message: data.message ?? "",
+            current: data.current_game,
+            total: data.total_games,
+          });
+        },
+      })
+      .then(() => {
+        saveLastUser(cleanUser);
+        window.setTimeout(() => router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`), 700);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setErrorMessage(err instanceof Error ? err.message : "Error inesperado durante el análisis.");
+      });
   };
 
   const cancel = () => {
-    sseRef.current?.close();
+    abortRef.current?.abort();
     setProgress(null);
     setErrorMessage("");
   };

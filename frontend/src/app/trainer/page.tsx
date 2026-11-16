@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getPuzzles, getTrainerStats, GetPuzzlesFilter } from "@/lib/api";
+import type { GetPuzzlesFilter } from "@/lib/api";
+import { store } from "@/lib/store";
 import { BlunderBankItem, TrainerStatsResponse } from "@/types/api";
 import { BlunderReplay } from "@/components/board/BlunderReplay";
 import { Card, Skeleton } from "@/components/ui/Card";
@@ -82,7 +83,7 @@ function TrainerContent() {
   const fetchStats = useCallback(async () => {
     if (!username) return;
     try {
-      setStats(await getTrainerStats(username));
+      setStats(await store.getTrainerStats(username));
     } catch {
       // las estadísticas son opcionales
     }
@@ -99,7 +100,7 @@ function TrainerContent() {
       else if (activeMode === "impulse") filter.psych_tag = "impulsive";
       if (onlyReviewDue) filter.status = "review_due";
 
-      setPuzzles(await getPuzzles(username, filter));
+      setPuzzles(await store.getPuzzles(username, filter));
       setCurrentIndex(0);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se encontraron ejercicios con este filtro.");

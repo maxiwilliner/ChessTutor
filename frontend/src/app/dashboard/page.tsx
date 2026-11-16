@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getProfile, getSummary, getTutorReport } from "@/lib/api";
+import { store } from "@/lib/store";
 import { PlayerDiagnosisSummary, PlayerProfile, TutorPedagogicalReport } from "@/types/api";
 import { DiagnosisCard } from "@/components/tutor/DiagnosisCard";
 import { StudyPlanCard } from "@/components/tutor/StudyPlanCard";
@@ -48,7 +48,7 @@ function DashboardContent() {
       try {
         setLoading(true);
         setError("");
-        const [sumData, tutorData] = await Promise.all([getSummary(usernameParam), getTutorReport(usernameParam)]);
+        const [sumData, tutorData] = await Promise.all([store.getSummary(usernameParam), store.getReport(usernameParam)]);
         if (cancelled) return;
         setSummary(sumData);
         setTutor(tutorData);
@@ -60,7 +60,8 @@ function DashboardContent() {
       }
     })();
     // El perfil (avatar) es decorativo: si falla, no bloquea.
-    getProfile(usernameParam)
+    store
+      .getProfile(usernameParam)
       .then((p) => !cancelled && setProfile(p))
       .catch(() => undefined);
     return () => {
@@ -96,7 +97,11 @@ function DashboardContent() {
       <EmptyState
         tone="error"
         title="No encontramos un análisis reciente"
-        text={`${error || "No se ha analizado este usuario."} Los diagnósticos se guardan en memoria y se pierden al reiniciar el servidor.`}
+        text={`${error || "No se ha analizado este usuario."} ${
+          store.mode === "demo"
+            ? "En la demo los análisis se guardan solo en el navegador donde los hiciste."
+            : "Los diagnósticos se guardan en memoria y se pierden al reiniciar el servidor."
+        }`}
         action={
           <Link href={`/?username=${encodeURIComponent(usernameParam)}`} className={buttonClasses("primary", "md")}>
             <RefreshCw className="h-4 w-4" aria-hidden /> Volver a analizar a {usernameParam}
