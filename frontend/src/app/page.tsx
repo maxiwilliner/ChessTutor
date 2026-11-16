@@ -1,212 +1,351 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createAnalysisEventSource } from "@/lib/api";
-import { Search, Trophy, Sparkles, ArrowRight, Activity, Clock, Zap } from "lucide-react";
+import { useLastUsername } from "@/lib/useLastUsername";
+import { DemoBoard } from "@/components/board/DemoBoard";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Segmented } from "@/components/ui/Segmented";
+import { cn } from "@/lib/cn";
+import {
+  Search,
+  ArrowRight,
+  Timer,
+  Zap,
+  Rocket,
+  Download,
+  Cpu,
+  Target,
+  Check,
+  Loader2,
+  AlertTriangle,
+  RotateCcw,
+  X,
+  History,
+} from "lucide-react";
+
+type Stage = "fetching_games" | "evaluating" | "classifying" | "complete";
+
+const STAGES: { key: Stage; label: string }[] = [
+  { key: "fetching_games", label: "Descargando partidas" },
+  { key: "evaluating", label: "Stockfish evalúa cada jugada" },
+  { key: "classifying", label: "Clasificando errores" },
+  { key: "complete", label: "Informe listo" },
+];
+
+interface Progress {
+  stage: Stage;
+  pct: number;
+  message: string;
+  current?: number;
+  total?: number;
+}
 
 export default function HomePage() {
   const router = useRouter();
+  const [lastUser, saveLastUser] = useLastUsername();
+
   const [username, setUsername] = useState("");
   const [timeClass, setTimeClass] = useState("rapid");
   const [gamesLimit, setGamesLimit] = useState(15);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("");
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const sseRef = useRef<EventSource | null>(null);
 
-  const handleStartAnalysis = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    // Prefill desde ?username= (p. ej. "Volver a analizar" en el diagnóstico)
+    const fromUrl = new URLSearchParams(window.location.search).get("username");
+    if (fromUrl) setUsername(fromUrl);
+    return () => sseRef.current?.close();
+  }, []);
+
+  const isAnalyzing = progress !== null && !errorMessage;
+
+  const start = () => {
     const cleanUser = username.trim();
     if (!cleanUser) return;
-
-    setIsAnalyzing(true);
-    setProgressPct(5);
-    setStatusMessage(`Conectando con Chess.com para ${cleanUser}...`);
+    sseRef.current?.close();
     setErrorMessage("");
+    setProgress({ stage: "fetching_games", pct: 3, message: `Conectando con Chess.com para ${cleanUser}…` });
 
     const sse = createAnalysisEventSource(cleanUser, timeClass, gamesLimit);
+    sseRef.current = sse;
 
     sse.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.stage === "error") {
           setErrorMessage(data.message);
-          setIsAnalyzing(false);
           sse.close();
           return;
         }
-
-        setProgressPct(data.progress_pct || 0);
-        setStatusMessage(data.message || "");
-
+        const stage: Stage = data.stage === "evaluating_start" ? "evaluating" : data.stage;
+        setProgress({
+          stage,
+          pct: data.progress_pct ?? 0,
+          message: data.message ?? "",
+          current: data.current_game,
+          total: data.total_games,
+        });
         if (data.stage === "complete") {
           sse.close();
-          if (typeof window !== "undefined") {
-            localStorage.setItem("chesstutor_last_username", cleanUser);
-          }
-          setTimeout(() => {
-            router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`);
-          }, 800);
+          saveLastUser(cleanUser);
+          window.setTimeout(() => router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`), 700);
         }
       } catch (err) {
         console.error("SSE parse error", err);
       }
     };
 
-    sse.onerror = (err) => {
-      console.error("SSE error", err);
+    sse.onerror = () => {
       sse.close();
-      setErrorMessage("Error de conexión al servidor de análisis. Asegúrate de que el backend esté en ejecución.");
-      setIsAnalyzing(false);
+      setErrorMessage("No se pudo conectar con el servidor de análisis. Comprueba que el backend esté en marcha.");
     };
   };
 
+  const cancel = () => {
+    sseRef.current?.close();
+    setProgress(null);
+    setErrorMessage("");
+  };
+
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4">
-      {/* Hero Header */}
-      <div className="text-center space-y-4 mb-12">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold">
-          <Sparkles className="w-4 h-4 text-indigo-400" />
-          <span>Inteligencia Artificial + Motor Stockfish 16</span>
-        </div>
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-          Tu Profesor Personal de Ajedrez conectado a{" "}
-          <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-            Chess.com
+    <div className="space-y-20 pb-8 sm:space-y-24">
+      {/* Hero */}
+      <section className="grid items-center gap-12 pt-2 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:pt-8">
+        <div className="animate-fade-up">
+          <span className="inline-flex items-center gap-2 rounded-full border border-brass-500/30 bg-brass-400/10 px-3 py-1 text-xs font-semibold text-brass-300">
+            <Cpu className="h-3.5 w-3.5" aria-hidden /> Stockfish 16 + tu historial de Chess.com
           </span>
-        </h1>
-        <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto">
-          Descubre de forma matemática las 3 fugas que más Elo te están costando, analiza tus patrones
-          de impulsividad con el reloj y entrena resolviendo tus propios errores reales.
-        </p>
-      </div>
+          <h1 className="mt-5 font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ivory sm:text-6xl">
+            Deja de repetir <span className="italic text-brass-300">los mismos</span> errores.
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-ivory-muted sm:text-lg">
+            Analizamos tus partidas reales, encontramos las 3 fugas que más Elo te cuestan y te ponemos a resolver
+            las posiciones exactas donde fallaste.
+          </p>
 
-      {/* Main Search Card */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl shadow-indigo-500/5">
-        <form onSubmit={handleStartAnalysis} className="space-y-6">
-          {/* Username Input */}
-          <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-              Usuario de Chess.com
-            </label>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={isAnalyzing}
-                placeholder="Ej. magnuscarlsen, hikaru o tu usuario..."
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl py-4 pl-12 pr-4 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition text-base font-medium"
-              />
-            </div>
-          </div>
-
-          {/* Time class & Limit grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                Ritmo de Juego
-              </label>
-              <select
-                value={timeClass}
-                onChange={(e) => setTimeClass(e.target.value)}
-                disabled={isAnalyzing}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl p-4 text-white focus:outline-none focus:border-indigo-500 text-sm font-medium"
-              >
-                <option value="rapid">Rápido (10+0, 15+10)</option>
-                <option value="blitz">Blitz (3+0, 5+0)</option>
-                <option value="bullet">Bullet (1+0, 2+1)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                Partidas a Analizar
-              </label>
-              <select
-                value={gamesLimit}
-                onChange={(e) => setGamesLimit(Number(e.target.value))}
-                disabled={isAnalyzing}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl p-4 text-white focus:outline-none focus:border-indigo-500 text-sm font-medium"
-              >
-                <option value={10}>Últimas 10 partidas (Rápido ~15s)</option>
-                <option value={15}>Últimas 15 partidas (Recomendado ~25s)</option>
-                <option value={30}>Últimas 30 partidas (Profundo ~45s)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          {!isAnalyzing ? (
-            <button
-              type="submit"
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-base flex items-center justify-center gap-2 shadow-xl shadow-indigo-600/25 transition transform active:scale-[0.99]"
+          <Card tone="raised" className="mt-8 p-5 sm:p-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                start();
+              }}
+              className="space-y-5"
             >
-              Iniciar Diagnóstico Pedagógico
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          ) : (
-            <div className="space-y-4 pt-2">
-              <div className="flex justify-between items-center text-sm font-medium">
-                <span className="text-slate-300 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
-                  {statusMessage}
-                </span>
-                <span className="text-indigo-400 font-mono font-bold">{progressPct}%</span>
+              <div>
+                <label htmlFor="username" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ivory-faint">
+                  Usuario de Chess.com
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ivory-faint" aria-hidden />
+                  <input
+                    id="username"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={isAnalyzing}
+                    placeholder="hikaru, magnuscarlsen o el tuyo"
+                    className="h-14 w-full rounded-xl border border-ink-500 bg-ink-900 pl-12 pr-4 text-base font-medium text-ivory placeholder:text-ivory-faint focus:border-brass-400 focus:outline-none focus:ring-2 focus:ring-brass-400/20 disabled:opacity-60"
+                  />
+                </div>
+                {lastUser && !isAnalyzing && lastUser !== username.trim() && (
+                  <Link
+                    href={`/dashboard?username=${encodeURIComponent(lastUser)}`}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs text-ivory-faint hover:text-brass-300"
+                  >
+                    <History className="h-3.5 w-3.5" aria-hidden />
+                    Continuar como <strong className="font-semibold text-ivory-muted">{lastUser}</strong>
+                  </Link>
+                )}
               </div>
-              <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
-                <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 rounded-full transition-all duration-300"
-                  style={{ width: `${progressPct}%` }}
-                />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <fieldset>
+                  <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-ivory-faint">Ritmo</legend>
+                  <Segmented
+                    ariaLabel="Ritmo de juego"
+                    stretch
+                    size="sm"
+                    disabled={isAnalyzing}
+                    value={timeClass}
+                    onChange={setTimeClass}
+                    options={[
+                      { value: "rapid", label: "Rápidas", icon: Timer },
+                      { value: "blitz", label: "Blitz", icon: Zap },
+                      { value: "bullet", label: "Bullet", icon: Rocket },
+                    ]}
+                  />
+                </fieldset>
+                <fieldset>
+                  <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-ivory-faint">Partidas</legend>
+                  <Segmented
+                    ariaLabel="Número de partidas"
+                    stretch
+                    size="sm"
+                    disabled={isAnalyzing}
+                    value={gamesLimit}
+                    onChange={setGamesLimit}
+                    options={[
+                      { value: 10, label: "10", hint: "~15 s" },
+                      { value: 15, label: "15", hint: "~25 s" },
+                      { value: 30, label: "30", hint: "~45 s" },
+                    ]}
+                  />
+                </fieldset>
               </div>
-            </div>
-          )}
 
-          {errorMessage && (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm">
-              {errorMessage}
-            </div>
-          )}
-        </form>
-      </div>
+              {!isAnalyzing && (
+                <Button type="submit" size="lg" className="w-full">
+                  Analizar mis partidas
+                  <ArrowRight className="h-5 w-5" aria-hidden />
+                </Button>
+              )}
+            </form>
 
-      {/* 3 Pillars Preview */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-16">
-        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 text-center">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto mb-3">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <h4 className="font-bold text-white text-sm mb-1">Cálculo con Stockfish 16</h4>
-          <p className="text-xs text-slate-400">
-            Evaluación matemática precisa de cada jugada con Centipawn Loss real.
-          </p>
+            {progress && <AnalysisProgress progress={progress} error={errorMessage} onRetry={start} onCancel={cancel} />}
+          </Card>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 text-center">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto mb-3">
-            <Clock className="w-5 h-5" />
-          </div>
-          <h4 className="font-bold text-white text-sm mb-1">Psicología del Reloj</h4>
-          <p className="text-xs text-slate-400">
-            Detección de errores impulsivos (&le;3s) y colapsos bajo presión de tiempo.
-          </p>
-        </div>
+        <DemoBoard className="mx-auto w-full max-w-[440px] animate-fade-up [animation-delay:150ms]" />
+      </section>
 
-        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 text-center">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto mb-3">
-            <Zap className="w-5 h-5" />
-          </div>
-          <h4 className="font-bold text-white text-sm mb-1">Entrenador Blunder Replay</h4>
-          <p className="text-xs text-slate-400">
-            Tablero interactivo donde resuelves las posiciones donde fallaste en tus partidas.
-          </p>
-        </div>
-      </div>
+      {/* Cómo funciona */}
+      <section aria-labelledby="como-funciona">
+        <h2 id="como-funciona" className="text-center font-display text-3xl font-semibold text-ivory">
+          Tres pasos, cero teoría genérica
+        </h2>
+        <ol className="mt-10 grid gap-5 md:grid-cols-3">
+          {[
+            {
+              icon: Download,
+              title: "Descargamos tus partidas",
+              text: "Leemos tu historial público de Chess.com, incluido el tiempo que gastaste en cada jugada.",
+            },
+            {
+              icon: Cpu,
+              title: "Stockfish encuentra el patrón",
+              text: "Medimos la pérdida de cada jugada y clasificamos el motivo: pieza colgada, horquilla, impulsividad o apuro de tiempo.",
+            },
+            {
+              icon: Target,
+              title: "Entrenas tus propios errores",
+              text: "Vuelves a la posición exacta donde fallaste, con pistas progresivas y repetición espaciada hasta dominarla.",
+            },
+          ].map((s, i) => (
+            <li key={s.title}>
+              <Card className="h-full p-6">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brass-500/30 bg-brass-400/10 text-brass-300">
+                    <s.icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="num font-display text-4xl font-semibold text-ink-600">0{i + 1}</span>
+                </div>
+                <h3 className="mt-5 font-display text-xl font-semibold text-ivory">{s.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ivory-muted">{s.text}</p>
+              </Card>
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   );
 }
 
+function AnalysisProgress({
+  progress,
+  error,
+  onRetry,
+  onCancel,
+}: {
+  progress: Progress;
+  error: string;
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  const activeIdx = STAGES.findIndex((s) => s.key === progress.stage);
+
+  if (error) {
+    return (
+      <div className="mt-5 animate-pop rounded-xl border border-rose-500/30 bg-rose-500/10 p-4" role="alert">
+        <div className="flex items-start gap-2.5 text-sm text-rose-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" aria-hidden />
+          <span>{error}</span>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Reintentar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 animate-fade-up space-y-4" aria-live="polite">
+      <ol className="space-y-2.5">
+        {STAGES.map((s, i) => {
+          const done = i < activeIdx || progress.stage === "complete";
+          const active = i === activeIdx && progress.stage !== "complete";
+          return (
+            <li key={s.key} className="flex items-center gap-3 text-sm">
+              <span
+                className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
+                  done && "border-emerald-400 bg-emerald-400 text-ink-950",
+                  active && "border-brass-400 text-brass-300",
+                  !done && !active && "border-ink-500 text-ink-500"
+                )}
+                aria-hidden
+              >
+                {done ? (
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                ) : active ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                )}
+              </span>
+              <span className={cn(done ? "text-ivory-muted" : active ? "font-semibold text-ivory" : "text-ivory-faint")}>
+                {s.label}
+                {active && s.key === "evaluating" && progress.current && progress.total && (
+                  <span className="num ml-2 text-xs font-normal text-brass-300">
+                    {progress.current}/{progress.total}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div>
+        <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+          <span className="truncate text-ivory-faint">{progress.message}</span>
+          <span className="num font-semibold text-brass-300">{progress.pct}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-ink-750">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-brass-500 to-brass-300 transition-[width] duration-500"
+            style={{ width: `${progress.pct}%` }}
+          />
+        </div>
+      </div>
+
+      {progress.stage !== "complete" && (
+        <button type="button" onClick={onCancel} className="flex items-center gap-1 text-xs text-ivory-faint hover:text-ivory">
+          <X className="h-3.5 w-3.5" aria-hidden /> Cancelar
+        </button>
+      )}
+    </div>
+  );
+}
