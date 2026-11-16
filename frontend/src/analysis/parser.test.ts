@@ -15,9 +15,11 @@ describe("parser (equivalencia con parser.py)", () => {
       const expected = g.normalized as unknown as NormalizedGame;
       const game = parseGamePgn(g.pgn, fixture.username)!;
       expect(game).not.toBeNull();
-      const { moves, end_time: _e, ...meta } = game;
-      const { moves: expMoves, end_time: _x, ...expMeta } = expected;
-      expect(meta).toEqual(expMeta);
+      // end_time lo aporta el JSON de Chess.com, no el PGN: se compara aparte en el agregador.
+      const omitEnd = ({ end_time, moves, ...rest }: NormalizedGame) => (void end_time, void moves, rest);
+      expect(omitEnd(game)).toEqual(omitEnd(expected));
+      const moves = game.moves;
+      const expMoves = expected.moves;
       expect(moves.length).toBe(expMoves.length);
       moves.forEach((m, j) => {
         const e = expMoves[j];

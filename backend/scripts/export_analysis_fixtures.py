@@ -19,6 +19,7 @@ from pathlib import Path
 from backend.app.core.database import AsyncSessionLocal, init_db
 from backend.app.modules.chesscom.client import ChessComClient
 from backend.app.modules.chesscom.parser import parse_game_pgn
+from backend.app.modules.engine import evaluator
 from backend.app.modules.engine.evaluator import evaluate_game_smart
 from backend.app.modules.engine.stockfish_pool import stockfish_pool
 from backend.app.modules.heuristics.aggregator import assemble_diagnosis_and_puzzles
@@ -47,6 +48,19 @@ def anonymize(pgn: str, username: str, index: int, opponents: dict) -> str:
 
 async def main(username: str, time_class: str, limit: int) -> None:
     await init_db()
+
+    # Record every position evaluation the evaluator receives, keyed by requested depth,
+    # so the TS evaluator can be replayed with a fake engine and compared move by move.
+    positions: dict = {}
+    real_evaluate_many = evaluator.evaluate_many
+
+    async def recording_evaluate_many(fens, depth, time_limit, db_session=None):
+        out = await real_evaluate_many(fens, depth, time_limit, db_session)
+        for ev in out:
+            positions[f"{depth}|{ev.fen}"] = ev.model_dump(mode="json")
+        return out
+
+    evaluator.evaluate_many = recording_evaluate_many
     client = ChessComClient()
     opponents: dict = {}
     raw_games = []
@@ -86,6 +100,7 @@ async def main(username: str, time_class: str, limit: int) -> None:
         "username": PLAYER,
         "time_class": time_class,
         "games": fixtures_games,
+        "positions": positions,
         "evaluated": [[m.model_dump(mode="json") for m in moves] for moves in evaluated],
         "summary": summary.model_dump(mode="json"),
         "puzzles": [p.model_dump(mode="json") for p in puzzles],
