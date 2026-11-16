@@ -28,7 +28,7 @@ const config: Config = {
         ivory: {
           DEFAULT: "#F3EDE2",
           muted: "#BDB6AA",
-          faint: "#8A8479",
+          faint: "#958F84",
         },
         brass: {
           200: "#F3DFB2",
