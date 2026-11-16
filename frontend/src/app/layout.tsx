@@ -1,62 +1,64 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
-import { Sparkles, Trophy, Dumbbell } from "lucide-react";
+import "./globals.css";
+import { KnightMark } from "@/components/layout/KnightMark";
+import { MobileTabBar, NavLinks } from "@/components/layout/NavLinks";
+
+const display = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["opsz"] });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "ChessTutor | Tu Profesor Personal de Ajedrez",
-  description: "Diagnóstico pedagógico con Stockfish 16, detección de patrones psicológicos y entrenamiento interactivo de tus propios errores.",
+  title: {
+    default: "ChessTutor · Tu profesor personal de ajedrez",
+    template: "%s · ChessTutor",
+  },
+  description:
+    "Diagnóstico pedagógico con Stockfish 16, detección de patrones psicológicos y entrenamiento interactivo de tus propios errores.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: "#0B0F15",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es" className="dark">
-      <body className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
-        {/* Navigation Bar */}
-        <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2.5 font-bold text-lg tracking-tight">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <Trophy className="w-5 h-5 text-white" />
-              </div>
-              <span className="bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
-                ChessTutor
+    <html lang="es" className={`dark ${display.variable} ${sans.variable} ${mono.variable}`}>
+      <body className="flex min-h-screen flex-col text-ivory">
+        <a
+          href="#contenido"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brass-400 focus:px-3 focus:py-2 focus:text-ink-950"
+        >
+          Saltar al contenido
+        </a>
+
+        <header className="sticky top-0 z-50 border-b border-ink-600/60 bg-ink-900/75 backdrop-blur-lg">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+            <Link href="/" className="group flex items-center gap-2.5" aria-label="ChessTutor, inicio">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-brass-500/30 bg-gradient-to-b from-brass-400/20 to-brass-400/5 text-brass-300 transition-colors group-hover:text-brass-200">
+                <KnightMark className="h-6 w-6" />
+              </span>
+              <span className="font-display text-xl font-semibold tracking-tight text-ivory">
+                Chess<span className="text-brass-400">Tutor</span>
               </span>
             </Link>
-
-            <nav className="flex items-center gap-6 text-sm font-medium">
-              <Link href="/" className="text-slate-400 hover:text-white transition">
-                Inicio
-              </Link>
-              <Link href="/dashboard" className="text-slate-400 hover:text-white transition flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-400" />
-                Diagnóstico
-              </Link>
-              <Link href="/trainer" className="text-slate-400 hover:text-white transition flex items-center gap-1.5">
-                <Dumbbell className="w-4 h-4 text-emerald-400" />
-                Blunder Replay
-              </Link>
-            </nav>
+            <NavLinks />
           </div>
         </header>
 
-        {/* Main Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main id="contenido" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-8 sm:px-6 sm:pb-12 lg:px-8">
           {children}
         </main>
 
-        {/* Footer */}
-        <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-500">
-          <div className="max-w-7xl mx-auto px-4">
-            ChessTutor &copy; {new Date().getFullYear()} · Cálculo con Stockfish 16 & python-chess · Conectado a la API de Chess.com
+        <footer className="hidden border-t border-ink-600/50 py-6 text-center text-xs text-ivory-faint sm:block">
+          <div className="mx-auto max-w-7xl px-4">
+            ChessTutor · Cálculo con Stockfish 16 y python-chess · Datos públicos de Chess.com
           </div>
         </footer>
+
+        <MobileTabBar />
       </body>
     </html>
   );
 }
-

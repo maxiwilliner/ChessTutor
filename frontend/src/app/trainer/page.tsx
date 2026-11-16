@@ -1,127 +1,108 @@
 "use client";
 
-import React, { useEffect, useState, Suspense, useCallback } from "react";
+import React, { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPuzzles, getTrainerStats, GetPuzzlesFilter } from "@/lib/api";
 import { BlunderBankItem, TrainerStatsResponse } from "@/types/api";
 import { BlunderReplay } from "@/components/board/BlunderReplay";
+import { Card, Skeleton } from "@/components/ui/Card";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import { Segmented } from "@/components/ui/Segmented";
+import { cn } from "@/lib/cn";
+import { themeLabel, TRAINER_THEMES, type TrainerMode } from "@/lib/labels";
+import { useLastUsername } from "@/lib/useLastUsername";
+import { useCountUp } from "@/lib/motion";
 import {
-  Dumbbell,
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  User,
-  Activity,
   Flame,
   Target,
   ShieldCheck,
-  Trophy,
-  Filter,
+  Layers,
   Zap,
-  Clock,
   Crosshair,
   RotateCcw,
+  Shapes,
+  Search,
 } from "lucide-react";
 
-type FilterMode = "all" | "leak" | "impulse" | "theme";
-
-const THEME_OPTIONS = [
-  { key: "hanging_piece", label: "Piezas Colgadas", icon: "🛡️" },
-  { key: "pin_exploitation", label: "Clavadas Tácticas", icon: "📌" },
-  { key: "fork_overlooked", label: "Ataques Dobles / Horquillas", icon: "⚡" },
-  { key: "missed_mate", label: "Mates Omitidos", icon: "👑" },
-  { key: "king_safety_collapse", label: "Seguridad del Rey", icon: "🏰" },
-];
+const MODES: TrainerMode[] = ["all", "leak", "impulse", "theme"];
 
 function TrainerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const rawParam = searchParams.get("username") || "";
+  const modeParam = searchParams.get("mode") as TrainerMode | null;
+  const themeParam = searchParams.get("theme");
+  const [lastUser, saveLastUser] = useLastUsername();
 
   const [username, setUsername] = useState<string>(rawParam);
-  const [inputUser, setInputUser] = useState<string>("");
+  const [inputUser, setInputUser] = useState("");
 
-  // Data & Puzzles State
   const [puzzles, setPuzzles] = useState<BlunderBankItem[]>([]);
   const [stats, setStats] = useState<TrainerStatsResponse | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Filter Mode State
-  const [activeMode, setActiveMode] = useState<FilterMode>("all");
-  const [selectedTheme, setSelectedTheme] = useState<string>("hanging_piece");
-  const [onlyReviewDue, setOnlyReviewDue] = useState<boolean>(false);
+  const [activeMode, setActiveMode] = useState<TrainerMode>(
+    modeParam && MODES.includes(modeParam) ? modeParam : themeParam ? "theme" : "all"
+  );
+  const [selectedTheme, setSelectedTheme] = useState<string>(themeParam || "hanging_piece");
+  const [onlyReviewDue, setOnlyReviewDue] = useState(false);
 
-  // Session Tracking State (real-time in session)
-  const [sessionStreak, setSessionStreak] = useState<number>(0);
-  const [sessionAttempts, setSessionAttempts] = useState<number>(0);
-  const [sessionFirstTryCount, setSessionFirstTryCount] = useState<number>(0);
-  const [sessionBlundersAvoided, setSessionBlundersAvoided] = useState<number>(0);
+  const [sessionStreak, setSessionStreak] = useState(0);
+  const [sessionAttempts, setSessionAttempts] = useState(0);
+  const [sessionFirstTryCount, setSessionFirstTryCount] = useState(0);
+  const [sessionBlundersAvoided, setSessionBlundersAvoided] = useState(0);
 
-  // Sync username from search param or localStorage
+  // Usuario: parámetro de URL > último usuario guardado
   useEffect(() => {
     if (rawParam) {
       setUsername(rawParam);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("chesstutor_last_username", rawParam);
-      }
-    } else if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("chesstutor_last_username");
-      if (saved) {
-        setUsername(saved);
-        router.replace(`/trainer?username=${encodeURIComponent(saved)}`);
-      } else {
-        setLoading(false);
-      }
+      saveLastUser(rawParam);
+    } else if (lastUser) {
+      setUsername(lastUser);
+      router.replace(`/trainer?username=${encodeURIComponent(lastUser)}`);
+    } else if (lastUser === null) {
+      setLoading(false);
     }
-  }, [rawParam, router]);
+  }, [rawParam, lastUser, router, saveLastUser]);
 
-  // Load Trainer Stats
+  // Sincronizar filtro si se llega con ?mode= / ?theme= (p. ej. desde el diagnóstico)
+  useEffect(() => {
+    if (modeParam && MODES.includes(modeParam)) setActiveMode(modeParam);
+    else if (themeParam) setActiveMode("theme");
+    if (themeParam) setSelectedTheme(themeParam);
+  }, [modeParam, themeParam]);
+
   const fetchStats = useCallback(async () => {
     if (!username) return;
     try {
-      const data = await getTrainerStats(username);
-      setStats(data);
-    } catch (e) {
-      // ignore
+      setStats(await getTrainerStats(username));
+    } catch {
+      // las estadísticas son opcionales
     }
   }, [username]);
 
-  // Load Puzzles with current filter
   const fetchPuzzles = useCallback(async () => {
     if (!username) return;
     try {
       setLoading(true);
       setError("");
-
       const filter: GetPuzzlesFilter = {};
-
-      if (activeMode === "leak") {
-        filter.top_leak_only = true;
-      } else if (activeMode === "impulse") {
-        // Will filter client-side if needed or load all and filter
-      } else if (activeMode === "theme") {
-        filter.theme = selectedTheme;
-      }
-
-      if (onlyReviewDue) {
-        filter.status = "review_due";
-      }
+      if (activeMode === "leak") filter.top_leak_only = true;
+      else if (activeMode === "theme") filter.theme = selectedTheme;
+      if (onlyReviewDue) filter.status = "review_due";
 
       const data = await getPuzzles(username, filter);
-
-      let finalPuzzles = data;
-      if (activeMode === "impulse") {
-        finalPuzzles = data.filter((p) => p.classification.psychological_tag === "impulsive");
-      }
-
-      setPuzzles(finalPuzzles);
+      setPuzzles(activeMode === "impulse" ? data.filter((p) => p.classification.psychological_tag === "impulsive") : data);
       setCurrentIndex(0);
-    } catch (err: any) {
-      setError(err.message || "No se encontraron ejercicios con este filtro.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se encontraron ejercicios con este filtro.");
       setPuzzles([]);
     } finally {
       setLoading(false);
@@ -135,294 +116,173 @@ function TrainerContent() {
     }
   }, [username, fetchStats, fetchPuzzles]);
 
-  const handleAttemptFinished = (result: {
-    isSolved: boolean;
-    firstTry: boolean;
-    repeatedOldBlunder: boolean;
-  }) => {
-    setSessionAttempts((prev) => prev + 1);
-
+  const handleAttemptFinished = (result: { isSolved: boolean; firstTry: boolean; repeatedOldBlunder: boolean }) => {
+    setSessionAttempts((p) => p + 1);
     if (result.isSolved) {
-      setSessionStreak((prev) => prev + 1);
-      if (result.firstTry) {
-        setSessionFirstTryCount((prev) => prev + 1);
-      }
-      if (!result.repeatedOldBlunder) {
-        setSessionBlundersAvoided((prev) => prev + 1);
-      }
+      setSessionStreak((p) => p + 1);
+      if (result.firstTry) setSessionFirstTryCount((p) => p + 1);
+      if (!result.repeatedOldBlunder) setSessionBlundersAvoided((p) => p + 1);
     } else {
       setSessionStreak(0);
     }
-
-    // Refresh aggregated stats in background
     fetchStats();
   };
 
-  const handleNext = () => {
-    if (currentIndex < puzzles.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
-      setCurrentIndex(0);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    }
-  };
+  const handleNext = () => setCurrentIndex((p) => (p < puzzles.length - 1 ? p + 1 : 0));
+  const handlePrev = () => setCurrentIndex((p) => (p > 0 ? p - 1 : p));
 
   if (!username) {
     return (
-      <div className="max-w-md mx-auto text-center py-16 bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl">
-        <User className="w-12 h-12 text-indigo-400 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">Entrenador de Errores Reales</h2>
-        <p className="text-sm text-slate-400 mb-6">
-          Introduce tu usuario de Chess.com para cargar tus posiciones analizadas:
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const clean = inputUser.trim();
-            if (clean) {
+      <div className="mx-auto max-w-md animate-fade-up py-10">
+        <Card className="p-8 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-brass-500/30 bg-brass-400/10 text-brass-300">
+            <Target className="h-7 w-7" aria-hidden />
+          </span>
+          <h1 className="font-display text-2xl font-semibold text-ivory">Entrena tus errores reales</h1>
+          <p className="mt-2 text-sm text-ivory-muted">
+            Escribe tu usuario de Chess.com para cargar las posiciones donde fallaste.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const clean = inputUser.trim();
+              if (!clean) return;
               setUsername(clean);
               router.push(`/trainer?username=${encodeURIComponent(clean)}`);
-            }
-          }}
-          className="space-y-4"
-        >
-          <input
-            type="text"
-            value={inputUser}
-            onChange={(e) => setInputUser(e.target.value)}
-            placeholder="Usuario de Chess.com (ej. macsimo1312)"
-            className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition text-sm"
-          />
-          <button
-            type="submit"
-            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-indigo-600/30"
-          >
-            Cargar Mis Ejercicios
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setUsername("macsimo1312");
-              router.push("/trainer?username=macsimo1312");
             }}
-            className="w-full py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white font-medium text-xs transition border border-slate-700/60"
+            className="mt-6 space-y-3"
           >
-            Cargar perfil de prueba: <span className="font-semibold text-emerald-400">macsimo1312</span> (48 ejercicios)
-          </button>
-        </form>
-        <div className="mt-6 pt-6 border-t border-slate-800 text-xs text-slate-500">
-          ¿Aún no has analizado tus partidas?{" "}
-          <Link href="/" className="text-indigo-400 hover:underline">
-            Ir al inicio y analizar
-          </Link>
-        </div>
+            <label htmlFor="trainer-user" className="sr-only">
+              Usuario de Chess.com
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-faint" aria-hidden />
+              <input
+                id="trainer-user"
+                type="text"
+                value={inputUser}
+                onChange={(e) => setInputUser(e.target.value)}
+                placeholder="Tu usuario de Chess.com"
+                autoComplete="off"
+                className="h-12 w-full rounded-xl border border-ink-500 bg-ink-900 pl-10 pr-4 text-sm text-ivory placeholder:text-ivory-faint focus:border-brass-400 focus:outline-none focus:ring-2 focus:ring-brass-400/20"
+              />
+            </div>
+            <Button type="submit" size="lg" className="w-full">
+              Cargar mis ejercicios
+            </Button>
+            {process.env.NODE_ENV === "development" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => router.push("/trainer?username=macsimo1312")}
+              >
+                Perfil de prueba: <span className="font-semibold text-emerald-300">macsimo1312</span>
+              </Button>
+            )}
+          </form>
+          <p className="mt-6 border-t border-ink-600 pt-5 text-xs text-ivory-faint">
+            ¿Aún no analizaste tus partidas?{" "}
+            <Link href="/" className="font-semibold text-brass-300 hover:underline">
+              Empieza por el diagnóstico
+            </Link>
+          </p>
+        </Card>
       </div>
     );
   }
 
   const currentPuzzle = puzzles[currentIndex];
-  const firstTryRate = sessionAttempts > 0 ? Math.round((sessionFirstTryCount / sessionAttempts) * 100) : 100;
+  const firstTryRate = sessionAttempts > 0 ? Math.round((sessionFirstTryCount / sessionAttempts) * 100) : null;
+  const themeCount = (key: string) => stats?.themes_breakdown[key]?.total_puzzles ?? 0;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* Cabecera */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Link
             href={`/dashboard?username=${encodeURIComponent(username)}`}
-            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition shadow-sm"
+            aria-label="Volver al diagnóstico"
+            className={buttonClasses("secondary", "md", "w-10 px-0")}
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
           <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white flex items-center gap-2.5">
-              <Dumbbell className="w-6 h-6 text-emerald-400" />
-              <span>Hub de Entrenamiento Táctico</span>
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Posiciones reales de partidas de <span className="text-slate-200 font-semibold">{username}</span>
+            <h1 className="font-display text-2xl font-semibold text-ivory sm:text-3xl">Entrenador</h1>
+            <p className="text-xs text-ivory-faint">
+              Posiciones reales de las partidas de <span className="font-semibold text-ivory-muted">{username}</span>
             </p>
           </div>
         </div>
-
-        {/* Carousel controls */}
-        {puzzles.length > 0 && (
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button
-              onClick={handlePrev}
-              disabled={currentIndex === 0}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 transition"
-              title="Ejercicio anterior"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-mono font-bold text-slate-300 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
-              {currentIndex + 1} / {puzzles.length}
-            </span>
-            <button
-              onClick={handleNext}
-              disabled={currentIndex === puzzles.length - 1}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 transition"
-              title="Siguiente ejercicio"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        <MasteryMeter stats={stats} />
       </div>
 
-      {/* Session Progress & Mastery Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5 shadow-sm">
-          <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400">
-            <Target className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-slate-400">Aciertos 1º intento</div>
-            <div className="text-lg font-extrabold text-white font-mono">
-              {sessionAttempts > 0 ? `${firstTryRate}%` : "100%"}
-              <span className="text-xs font-normal text-slate-500 ml-1">({sessionFirstTryCount}/{sessionAttempts})</span>
-            </div>
-          </div>
-        </div>
+      {/* Sesión */}
+      <Card tone="inset" className="grid grid-cols-2 divide-ink-600/60 sm:grid-cols-4 sm:divide-x">
+        <SessionStat icon={Target} tone="text-brass-300" label="1.er intento" value={firstTryRate === null ? "—" : `${firstTryRate}%`} sub={`${sessionFirstTryCount}/${sessionAttempts}`} />
+        <SessionStat icon={Flame} tone="text-amber-300" label="Racha" value={String(sessionStreak)} sub="seguidos" highlight={sessionStreak >= 3} />
+        <SessionStat icon={ShieldCheck} tone="text-emerald-300" label="Blunders evitados" value={String(sessionBlundersAvoided)} sub="en sesión" />
+        <SessionStat icon={RotateCcw} tone="text-cyan-300" label="Repaso pendiente" value={String(stats?.review_due_puzzles ?? 0)} sub="hoy" />
+      </Card>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5 shadow-sm">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400">
-            <Flame className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-slate-400">Racha actual</div>
-            <div className="text-lg font-extrabold text-amber-400 font-mono">
-              {sessionStreak} <span className="text-xs font-normal text-slate-500">seguidos</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5 shadow-sm">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-slate-400">Blunders evitados</div>
-            <div className="text-lg font-extrabold text-emerald-400 font-mono">
-              {sessionBlundersAvoided} <span className="text-xs font-normal text-slate-500">en sesión</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5 shadow-sm">
-          <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-slate-400">Maestría Global</div>
-            <div className="text-lg font-extrabold text-purple-300 font-mono">
-              {stats?.mastery_percentage ?? 0}%
-              <span className="text-xs font-normal text-slate-500 ml-1">
-                ({stats?.mastered_puzzles ?? 0}/{stats?.total_puzzles ?? 0})
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 4 Mode Filter Tabs */}
-      <div className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 space-y-3 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setActiveMode("all")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
-                activeMode === "all"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              <span>Todos los Errores</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMode("leak")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
-                activeMode === "leak"
-                  ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
-                  : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Crosshair className="w-3.5 h-3.5" />
-              <span>Fuga Prioritaria #1</span>
-              {stats?.top_leak_theme && (
-                <span className="text-[10px] bg-rose-950/80 px-1.5 py-0.5 rounded text-rose-300 uppercase">
-                  {stats.top_leak_theme.replace("_", " ")}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveMode("impulse")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
-                activeMode === "impulse"
-                  ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
-                  : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Control de Impulsos (≤3s)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMode("theme")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
-                activeMode === "theme"
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
-                  : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <span>Por Tema Táctico</span>
-            </button>
-          </div>
-
-          {/* Review Due SRS Toggle */}
+      {/* Filtros */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <Segmented<TrainerMode>
+            ariaLabel="Tipo de ejercicios"
+            value={activeMode}
+            onChange={setActiveMode}
+            options={[
+              { value: "all", label: "Todos", icon: Layers },
+              {
+                value: "leak",
+                label: "Fuga n.º 1",
+                icon: Crosshair,
+                hint: stats?.top_leak_theme ? themeLabel(stats.top_leak_theme) : undefined,
+              },
+              { value: "impulse", label: "Impulsivos", icon: Zap, hint: "≤ 3 s" },
+              { value: "theme", label: "Por tema", icon: Shapes },
+            ]}
+          />
           <button
-            onClick={() => setOnlyReviewDue((prev) => !prev)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 border transition ${
+            type="button"
+            aria-pressed={onlyReviewDue}
+            onClick={() => setOnlyReviewDue((p) => !p)}
+            className={cn(
+              "flex h-10 items-center gap-2 self-start rounded-xl border px-3.5 text-sm font-medium transition-colors lg:self-auto",
               onlyReviewDue
-                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
-                : "bg-slate-900 border-slate-700/60 text-slate-400 hover:text-slate-300"
-            }`}
+                ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-200"
+                : "border-ink-600 bg-ink-900/80 text-ivory-muted hover:text-ivory"
+            )}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Repaso Programado ({stats?.review_due_puzzles ?? 0})</span>
+            <RotateCcw className="h-4 w-4" aria-hidden />
+            Solo repaso programado
+            <span className="num rounded-md bg-ink-750 px-1.5 text-xs">{stats?.review_due_puzzles ?? 0}</span>
           </button>
         </div>
 
-        {/* Theme Pills (When activeMode === 'theme') */}
         {activeMode === "theme" && (
-          <div className="pt-2 border-t border-slate-800 flex flex-wrap gap-2">
-            {THEME_OPTIONS.map((th) => {
-              const themeCount = stats?.themes_breakdown[th.key]?.total_puzzles ?? 0;
-              const isSelected = selectedTheme === th.key;
+          <div className="flex animate-fade-up flex-wrap gap-2" role="group" aria-label="Tema táctico">
+            {TRAINER_THEMES.map((th) => {
+              const selected = selectedTheme === th.key;
+              const Icon = th.icon;
               return (
                 <button
                   key={th.key}
+                  type="button"
+                  aria-pressed={selected}
                   onClick={() => setSelectedTheme(th.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition ${
-                    isSelected
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                      : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                  }`}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors",
+                    selected
+                      ? "border-brass-500/50 bg-brass-400/15 text-brass-200"
+                      : "border-ink-600 bg-ink-850 text-ivory-muted hover:border-ink-500 hover:text-ivory"
+                  )}
                 >
-                  <span>{th.icon}</span>
-                  <span>{th.label}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400 font-mono">
-                    {themeCount}
-                  </span>
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                  {th.label}
+                  <span className="num rounded-full bg-ink-750 px-1.5 text-[10px] text-ivory-faint">{themeCount(th.key)}</span>
                 </button>
               );
             })}
@@ -430,32 +290,51 @@ function TrainerContent() {
         )}
       </div>
 
-      {/* Main Content Area */}
-      {loading ? (
-        <div className="max-w-md mx-auto text-center py-24 space-y-4">
-          <Activity className="w-10 h-10 text-emerald-400 animate-spin mx-auto" />
-          <h3 className="text-lg font-bold text-white">Cargando tus posiciones de entrenamiento...</h3>
-          <p className="text-xs text-slate-400">Extrayendo tus errores reales analizados por Stockfish 16.</p>
+      {/* Navegación entre ejercicios */}
+      {!loading && puzzles.length > 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-750" aria-hidden>
+            <div
+              className="h-full rounded-full bg-brass-400 transition-[width] duration-500"
+              style={{ width: `${((currentIndex + 1) / puzzles.length) * 100}%` }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handlePrev} disabled={currentIndex === 0} aria-label="Ejercicio anterior">
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Button>
+            <span className="num min-w-14 text-center text-xs font-semibold text-ivory-muted">
+              {currentIndex + 1} / {puzzles.length}
+            </span>
+            <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handleNext} aria-label="Siguiente ejercicio">
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
         </div>
+      )}
+
+      {/* Contenido */}
+      {loading ? (
+        <TrainerSkeleton />
       ) : error || puzzles.length === 0 ? (
-        <div className="max-w-md mx-auto text-center py-20 bg-slate-900/60 border border-slate-800 rounded-2xl p-8">
-          <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-white mb-1">¡No hay ejercicios pendientes en esta categoría!</h3>
-          <p className="text-xs text-slate-400 mb-6">
+        <Card className="mx-auto max-w-md animate-fade-up p-8 text-center">
+          <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-400" aria-hidden />
+          <h2 className="font-display text-xl font-semibold text-ivory">Nada pendiente aquí</h2>
+          <p className="mb-6 mt-1 text-sm text-ivory-muted">
             {onlyReviewDue
-              ? "No tienes ejercicios pendientes de repaso programado para hoy. ¡Excelente constancia!"
-              : "No se encontraron errores bajo este filtro o ya has dominado todas estas posiciones."}
+              ? "No tienes repasos programados para hoy. ¡Buena constancia!"
+              : "No hay errores con este filtro, o ya dominaste todas estas posiciones."}
           </p>
-          <button
+          <Button
+            variant="secondary"
             onClick={() => {
               setActiveMode("all");
               setOnlyReviewDue(false);
             }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 text-white font-medium text-sm hover:bg-slate-700 transition"
           >
-            Ver Todos los Ejercicios
-          </button>
-        </div>
+            Ver todos los ejercicios
+          </Button>
+        </Card>
       ) : (
         <BlunderReplay
           key={currentPuzzle.id}
@@ -464,6 +343,7 @@ function TrainerContent() {
           totalPuzzles={puzzles.length}
           username={username}
           onNext={handleNext}
+          onPrev={handlePrev}
           onAttemptFinished={handleAttemptFinished}
         />
       )}
@@ -471,9 +351,90 @@ function TrainerContent() {
   );
 }
 
+function SessionStat({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  sub,
+  highlight,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tone: string;
+  label: string;
+  value: string;
+  sub: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <Icon className={cn("h-4 w-4 shrink-0", tone, highlight && "animate-pulse")} aria-hidden />
+      <div className="min-w-0">
+        <div className="truncate text-[11px] text-ivory-faint">{label}</div>
+        <div className="flex items-baseline gap-1.5">
+          <span className={cn("num text-lg font-semibold", tone)}>{value}</span>
+          <span className="truncate text-[11px] text-ivory-faint">{sub}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MasteryMeter({ stats }: { stats: TrainerStatsResponse | null }) {
+  const pct = stats?.mastery_percentage ?? 0;
+  const animated = useCountUp(pct);
+  const r = 20;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="flex items-center gap-3 self-start rounded-2xl border border-ink-600/70 bg-ink-800/70 py-2 pl-2 pr-4 sm:self-auto">
+      <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden>
+        <circle cx="24" cy="24" r={r} fill="none" stroke="#1F2733" strokeWidth="5" />
+        <circle
+          cx="24"
+          cy="24"
+          r={r}
+          fill="none"
+          stroke="#DDB463"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - animated / 100)}
+        />
+      </svg>
+      <div>
+        <div className="text-[11px] text-ivory-faint">Maestría global</div>
+        <div className="num text-lg font-semibold text-brass-300">
+          {Math.round(animated)}%
+          <span className="ml-1.5 text-xs font-normal text-ivory-faint">
+            {stats?.mastered_puzzles ?? 0}/{stats?.total_puzzles ?? 0}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrainerSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8" aria-busy="true" aria-label="Cargando ejercicios">
+      <div className="mx-auto w-full max-w-[600px] space-y-2 lg:col-span-7">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="aspect-square w-full" />
+        <Skeleton className="h-6 w-56" />
+      </div>
+      <div className="space-y-4 lg:col-span-5">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-28" />
+        <Skeleton className="h-36" />
+        <Skeleton className="h-12" />
+      </div>
+    </div>
+  );
+}
+
 export default function TrainerPage() {
   return (
-    <Suspense fallback={<div className="text-center py-20 text-slate-400">Cargando...</div>}>
+    <Suspense fallback={<TrainerSkeleton />}>
       <TrainerContent />
     </Suspense>
   );

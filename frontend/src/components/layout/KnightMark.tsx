@@ -1,0 +1,12 @@
+import React from "react";
+
+/** Marca de ChessTutor: silueta de caballo. Hereda el color con `currentColor`. */
+export function KnightMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} fill="currentColor" aria-hidden>
+      <path d="M7.5 28.5h17.5v-2.6H7.5z" />
+      <path d="M9.6 25.9c-.1-4.3 1.9-7.2 5.4-9.4l-3.4.3-3 2.3-2.9-2.5c.4-3.7 2.5-7.2 5.7-9.3l.3-3.4 2.9 2.2c5-.3 9.6 2.6 11.2 8.3 1.1 3.9.7 8-.5 11.5z" />
+      <circle cx="13.6" cy="11.4" r="1.15" fill="#0B0F15" />
+    </svg>
+  );
+}

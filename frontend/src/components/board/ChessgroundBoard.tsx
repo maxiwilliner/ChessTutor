@@ -4,128 +4,153 @@ import React, { useEffect, useRef } from "react";
 import { Chessground } from "chessground";
 import { Api } from "chessground/api";
 import { Config } from "chessground/config";
+import { DrawShape } from "chessground/draw";
 import { Key } from "chessground/types";
 import { Chess } from "chess.js";
+import { cn } from "@/lib/cn";
+import { prefersReducedMotion } from "@/lib/motion";
+
+export type BoardEffect = "shake" | "glow" | null;
 
 interface ChessgroundBoardProps {
   fen: string;
   orientation?: "white" | "black";
+  /** @deprecated El turno se deduce del FEN. */
   turnColor?: "white" | "black";
   onMove?: (orig: Key, dest: Key) => void;
   viewOnly?: boolean;
-  shapes?: any[];
+  shapes?: DrawShape[];
+  lastMove?: [Key, Key] | null;
+  /** Cambiarlo fuerza a resincronizar el tablero con `fen` (p. ej. tras deshacer una jugada). */
+  syncKey?: number;
+  effect?: BoardEffect;
+  onEffectEnd?: () => void;
+  showCoordinates?: boolean;
   className?: string;
+  /** Capa superpuesta (p. ej. cuenta atrás anti-impulso). */
+  children?: React.ReactNode;
+}
+
+function boardState(fen: string) {
+  const dests = new Map<Key, Key[]>();
+  let turn: "white" | "black" = fen.split(" ")[1] === "b" ? "black" : "white";
+  let inCheck = false;
+  try {
+    const chess = new Chess(fen);
+    turn = chess.turn() === "w" ? "white" : "black";
+    inCheck = chess.inCheck();
+    if (!chess.isGameOver()) {
+      for (const move of chess.moves({ verbose: true })) {
+        const from = move.from as Key;
+        const list = dests.get(from) ?? [];
+        list.push(move.to as Key);
+        dests.set(from, list);
+      }
+    }
+  } catch {
+    // FEN parcial o inválido: tablero sin destinos
+  }
+  return { dests, turn, inCheck };
 }
 
 export const ChessgroundBoard: React.FC<ChessgroundBoardProps> = ({
   fen,
   orientation = "white",
-  turnColor = "white",
   onMove,
   viewOnly = false,
   shapes = [],
-  className = "",
+  lastMove,
+  syncKey = 0,
+  effect = null,
+  onEffectEnd,
+  showCoordinates = true,
+  className,
+  children,
 }) => {
   const boardRef = useRef<HTMLDivElement>(null);
   const cgApiRef = useRef<Api | null>(null);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
 
-  // Compute legal destination squares for movable pieces using chess.js
-  const getDests = (currentFen: string) => {
-    const dests = new Map<Key, Key[]>();
-    try {
-      const chess = new Chess(currentFen);
-      if (chess.isGameOver()) return dests;
-
-      const moves = chess.moves({ verbose: true });
-      for (const move of moves) {
-        const from = move.from as Key;
-        const to = move.to as Key;
-        if (!dests.has(from)) {
-          dests.set(from, []);
-        }
-        dests.get(from)!.push(to);
-      }
-    } catch (e) {
-      // Invalid or partial FEN fallback
-    }
-    return dests;
-  };
-
-  useEffect(() => {
-    if (!boardRef.current) return;
-
-    const dests = getDests(fen);
-
-    const config: Config = {
+  const buildConfig = (): Config => {
+    const { dests, turn, inCheck } = boardState(fen);
+    const cfg: Config = {
       fen,
       orientation,
-      turnColor,
-      viewOnly: false, // Keep false so event listeners are bound
+      turnColor: turn,
+      check: inCheck ? turn : false,
+      coordinates: showCoordinates,
+      viewOnly: false, // mantener en false para que los eventos sigan enlazados
       movable: {
         free: false,
-        color: viewOnly ? undefined : turnColor,
+        color: viewOnly ? undefined : turn,
         dests: viewOnly ? new Map() : dests,
         showDests: !viewOnly,
         events: {
-          after: (orig, dest) => {
-            if (onMove) {
-              onMove(orig, dest);
-            }
-          },
+          after: (orig, dest) => onMoveRef.current?.(orig, dest),
         },
       },
-      draggable: {
-        enabled: !viewOnly,
-      },
-      selectable: {
-        enabled: !viewOnly,
-      },
-      drawable: {
-        enabled: true,
-        visible: true,
-        autoShapes: shapes,
-      },
-      highlight: {
-        lastMove: true,
-        check: true,
-      },
-      animation: {
-        enabled: true,
-        duration: 250,
-      },
+      draggable: { enabled: !viewOnly, showGhost: true },
+      selectable: { enabled: !viewOnly },
+      drawable: { enabled: true, visible: true, autoShapes: shapes },
+      highlight: { lastMove: true, check: true },
+      animation: { enabled: !prefersReducedMotion(), duration: 260 },
     };
+    if (lastMove !== undefined) cfg.lastMove = lastMove ?? undefined;
+    return cfg;
+  };
 
-    if (!cgApiRef.current || !boardRef.current.hasChildNodes()) {
-      if (cgApiRef.current) {
-        try {
-          cgApiRef.current.destroy();
-        } catch (e) {}
-      }
-      cgApiRef.current = Chessground(boardRef.current, config);
-    } else {
-      cgApiRef.current.set(config);
-    }
+  // Crear una sola vez; destruir al desmontar.
+  useEffect(() => {
+    if (!boardRef.current) return;
+    cgApiRef.current = Chessground(boardRef.current, buildConfig());
 
+    // Redibujar al cambiar el tamaño (diferido a rAF para no provocar bucles de ResizeObserver).
+    let lastWidth = boardRef.current.clientWidth;
+    let raf = 0;
+    const ro = new ResizeObserver((entries) => {
+      const width = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (!width || width === lastWidth) return;
+      lastWidth = width;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => cgApiRef.current?.redrawAll());
+    });
+    ro.observe(boardRef.current);
     return () => {
-      if (cgApiRef.current) {
-        try {
-          cgApiRef.current.destroy();
-        } catch (e) {}
-        cgApiRef.current = null;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      try {
+        cgApiRef.current?.destroy();
+      } catch {
+        // ignorar
       }
+      cgApiRef.current = null;
     };
-  }, [fen, orientation, turnColor, viewOnly, shapes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Actualizar en cada cambio de estado.
+  useEffect(() => {
+    const api = cgApiRef.current;
+    if (!api) return;
+    api.set(buildConfig());
+    api.setAutoShapes(shapes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fen, orientation, viewOnly, shapes, lastMove, syncKey, showCoordinates]);
 
   return (
-    <div className={`relative flex items-center justify-center ${className}`}>
-      <div className="w-[340px] h-[340px] sm:w-[460px] sm:h-[460px] relative rounded-xl shadow-2xl border-4 border-slate-700 overflow-hidden bg-[#b58863]">
-        <div
-          ref={boardRef}
-          className="w-full h-full relative"
-          style={{ width: "100%", height: "100%" }}
-        />
+    <div className={cn("relative w-full", className)}>
+      <div
+        onAnimationEnd={onEffectEnd}
+        className={cn(
+          "relative aspect-square w-full overflow-hidden rounded-xl border-[5px] border-ink-700 bg-[#a07a55] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] ring-1 ring-brass-500/20",
+          effect === "shake" && "animate-shake border-rose-500/70",
+          effect === "glow" && "animate-glow border-emerald-500/70"
+        )}
+      >
+        <div ref={boardRef} className="absolute inset-0" />
+        {children}
       </div>
     </div>
   );
 };
-

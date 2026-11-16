@@ -6,7 +6,50 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Chessground container sizing */
+:root {
+  color-scheme: dark;
+  --ink: #0b0f15;
+  --ivory: #f3ede2;
+  --brass: #ddb463;
+  --board-light: #e8dcc5;
+  --board-dark: #a07a55;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--ink);
+  background-image:
+    radial-gradient(1100px 520px at 50% -12%, rgba(221, 180, 99, 0.09), transparent 62%),
+    radial-gradient(800px 400px at 100% 0%, rgba(56, 189, 248, 0.035), transparent 60%);
+  background-attachment: fixed;
+  color: var(--ivory);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: rgba(221, 180, 99, 0.35);
+    color: #fff;
+  }
+}
+
+@layer components {
+  .num {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ---------- Chessground: tamaño fluido ---------- */
 .cg-wrap {
   width: 100% !important;
   height: 100% !important;
@@ -32,10 +75,61 @@ cg-board {
   display: block !important;
 }
 
-body {
-  background-color: #0f172a;
-  color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+/* ---------- Chessground: tema "nogal" (sobrescribe brown.css) ---------- */
+.cg-wrap cg-board {
+  background-color: var(--board-light);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'><rect width='8' height='8' fill='%23e8dcc5'/><path fill='%23a07a55' d='M1 0h1v1h-1zM3 0h1v1h-1zM5 0h1v1h-1zM7 0h1v1h-1zM0 1h1v1h-1zM2 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM1 2h1v1h-1zM3 2h1v1h-1zM5 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM6 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM0 7h1v1h-1zM2 7h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1z'/></svg>") !important;
+  background-size: 100% 100%;
 }
 
+.cg-wrap cg-board square.last-move {
+  background-color: rgba(221, 180, 99, 0.42);
+}
 
+.cg-wrap cg-board square.selected {
+  background-color: rgba(221, 180, 99, 0.6);
+}
+
+.cg-wrap cg-board square.move-dest {
+  background: radial-gradient(rgba(20, 24, 32, 0.32) 21%, rgba(20, 24, 32, 0) 23%);
+}
+
+.cg-wrap cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 78%, rgba(20, 24, 32, 0.32) 80%);
+}
+
+.cg-wrap cg-board square.move-dest:hover {
+  background: rgba(221, 180, 99, 0.35);
+}
+
+.cg-wrap coords coord {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 600;
+  text-shadow: none !important;
+}
+
+.cg-wrap.orientation-white coords.ranks coord:nth-child(odd),
+.cg-wrap.orientation-white coords.files coord:nth-child(odd),
+.cg-wrap.orientation-black coords.ranks coord:nth-child(even),
+.cg-wrap.orientation-black coords.files coord:nth-child(even) {
+  color: var(--board-light) !important;
+}
+
+.cg-wrap.orientation-white coords.ranks coord:nth-child(even),
+.cg-wrap.orientation-white coords.files coord:nth-child(even),
+.cg-wrap.orientation-black coords.ranks coord:nth-child(odd),
+.cg-wrap.orientation-black coords.files coord:nth-child(odd) {
+  color: var(--board-dark) !important;
+}
+
+/* ---------- Accesibilidad: reducir movimiento ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
