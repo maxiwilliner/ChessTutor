@@ -241,7 +241,7 @@ function TrainerContent() {
                 icon: Crosshair,
                 hint: stats?.top_leak_theme ? themeLabel(stats.top_leak_theme) : undefined,
               },
-              { value: "impulse", label: "Impulsivos", icon: Zap, hint: "≤ 3 s" },
+              { value: "impulse", label: "Impulsivos", icon: Zap, hint: "al instante" },
               { value: "theme", label: "Por tema", icon: Shapes },
             ]}
           />

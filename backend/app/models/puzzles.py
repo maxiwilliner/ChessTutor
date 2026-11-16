@@ -65,7 +65,7 @@ class BlunderBankItem(BaseModel):
 # Trainer Request/Response Models
 
 class PuzzleAttemptRequest(BaseModel):
-    username: str
+    username: str = Field(..., pattern=r"^[A-Za-z0-9_-]{3,25}$")
     puzzle_id: str
     played_uci: str
     is_solved: bool

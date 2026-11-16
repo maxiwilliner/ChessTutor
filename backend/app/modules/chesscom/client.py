@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
@@ -11,6 +12,11 @@ from backend.app.models.chesscom import PlayerProfile, PlayerStats, RatingStats,
 from backend.app.modules.chesscom.parser import parse_game_pgn
 
 
+MAX_RETRIES = 3
+# Chess.com asks API clients to avoid parallel requests; allow at most two in flight.
+_REQUEST_SLOTS = asyncio.Semaphore(2)
+
+
 class ChessComClient:
     BASE_URL = "https://api.chess.com/pub"
 
@@ -20,64 +26,75 @@ class ChessComClient:
             "Accept": "application/json",
         }
 
+    async def _get_json(self, url: str, timeout: float = 10.0) -> Optional[Dict[str, Any]]:
+        """
+        GET a Chess.com endpoint. Returns None on 404. Requests are serialised through a shared
+        semaphore (Chess.com rate-limits parallel requests) and retried on 429/5xx, honouring Retry-After.
+        Raises httpx.HTTPStatusError if it still fails after the retries.
+        """
+        async with _REQUEST_SLOTS:
+            async with httpx.AsyncClient(headers=self.headers, timeout=timeout) as client:
+                for attempt in range(MAX_RETRIES + 1):
+                    resp = await client.get(url)
+                    if resp.status_code == 404:
+                        return None
+                    retryable = resp.status_code == 429 or resp.status_code >= 500
+                    if retryable and attempt < MAX_RETRIES:
+                        retry_after = resp.headers.get("Retry-After", "")
+                        delay = float(retry_after) if retry_after.isdigit() else 2 ** attempt
+                        await asyncio.sleep(min(delay, 10.0))
+                        continue
+                    resp.raise_for_status()
+                    return resp.json()
+        return None
+
     async def get_player_profile(self, username: str) -> Optional[PlayerProfile]:
         url = f"{self.BASE_URL}/player/{username.lower()}"
-        async with httpx.AsyncClient(headers=self.headers, timeout=10.0) as client:
-            resp = await client.get(url)
-            if resp.status_code == 404:
-                return None
-            resp.raise_for_status()
-            data = resp.json()
-            return PlayerProfile(
-                username=data.get("username", username),
-                title=data.get("title"),
-                status=data.get("status"),
-                avatar=data.get("avatar"),
-                country=data.get("country"),
-                joined=data.get("joined"),
-                url=data.get("url")
-            )
+        data = await self._get_json(url)
+        if data is None:
+            return None
+        return PlayerProfile(
+            username=data.get("username", username),
+            title=data.get("title"),
+            status=data.get("status"),
+            avatar=data.get("avatar"),
+            country=data.get("country"),
+            joined=data.get("joined"),
+            url=data.get("url")
+        )
 
     async def get_player_stats(self, username: str) -> Optional[PlayerStats]:
         url = f"{self.BASE_URL}/player/{username.lower()}/stats"
-        async with httpx.AsyncClient(headers=self.headers, timeout=10.0) as client:
-            resp = await client.get(url)
-            if resp.status_code == 404:
+        data = await self._get_json(url)
+        if data is None:
+            return None
+
+        def extract_stats(section_name: str) -> Optional[RatingStats]:
+            sec = data.get(section_name)
+            if not sec:
                 return None
-            resp.raise_for_status()
-            data = resp.json()
-
-            def extract_stats(section_name: str) -> Optional[RatingStats]:
-                sec = data.get(section_name)
-                if not sec:
-                    return None
-                last = sec.get("last", {}).get("rating", 0)
-                best = sec.get("best", {}).get("rating", 0)
-                record = sec.get("record", {})
-                return RatingStats(
-                    last_rating=last,
-                    best_rating=best,
-                    win=record.get("win", 0),
-                    loss=record.get("loss", 0),
-                    draw=record.get("draw", 0)
-                )
-
-            return PlayerStats(
-                username=username,
-                rapid=extract_stats("chess_rapid"),
-                blitz=extract_stats("chess_blitz"),
-                bullet=extract_stats("chess_bullet")
+            last = sec.get("last", {}).get("rating", 0)
+            best = sec.get("best", {}).get("rating", 0)
+            record = sec.get("record", {})
+            return RatingStats(
+                last_rating=last,
+                best_rating=best,
+                win=record.get("win", 0),
+                loss=record.get("loss", 0),
+                draw=record.get("draw", 0)
             )
+
+        return PlayerStats(
+            username=username,
+            rapid=extract_stats("chess_rapid"),
+            blitz=extract_stats("chess_blitz"),
+            bullet=extract_stats("chess_bullet")
+        )
 
     async def get_monthly_archives(self, username: str) -> List[str]:
         url = f"{self.BASE_URL}/player/{username.lower()}/games/archives"
-        async with httpx.AsyncClient(headers=self.headers, timeout=10.0) as client:
-            resp = await client.get(url)
-            if resp.status_code == 404:
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("archives", [])
+        data = await self._get_json(url)
+        return data.get("archives", []) if data else []
 
     async def get_monthly_games(
         self,
@@ -114,13 +131,10 @@ class ChessComClient:
                     return json.loads(cached.data_json)
 
         # Fetch from Chess.com API
-        async with httpx.AsyncClient(headers=self.headers, timeout=15.0) as client:
-            resp = await client.get(archive_url)
-            if resp.status_code == 404:
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-            games_raw = data.get("games", [])
+        data = await self._get_json(archive_url, timeout=15.0)
+        if data is None:
+            return []
+        games_raw = data.get("games", [])
 
         # Save to DB cache
         if db_session:

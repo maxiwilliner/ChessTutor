@@ -231,7 +231,7 @@ export default function HomePage() {
             {
               icon: Cpu,
               title: "Stockfish encuentra el patrón",
-              text: "Medimos la pérdida de cada jugada y clasificamos el motivo: pieza colgada, horquilla, impulsividad o apuro de tiempo.",
+              text: "Medimos cuánto cae tu probabilidad de ganar en cada jugada y clasificamos el motivo: pieza colgada, horquilla, impulsividad o apuro de tiempo.",
             },
             {
               icon: Target,

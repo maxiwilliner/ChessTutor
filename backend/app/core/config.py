@@ -1,8 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from pathlib import Path
+from typing import Optional
 import os
 import shutil
+
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -30,6 +34,10 @@ class Settings(BaseSettings):
     STOCKFISH_TIME_LIMIT_FAST: float = 0.04
     STOCKFISH_TIME_LIMIT_DEEP: float = 0.20
 
+    # Optional LLM for the tutor report (without a key a rule-based report is used)
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
@@ -37,7 +45,8 @@ class Settings(BaseSettings):
     ]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Both the repo-root .env and backend/.env (where .env.example lives) are read; the latter wins.
+        env_file=(str(_BACKEND_DIR.parent / ".env"), str(_BACKEND_DIR / ".env")),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore"

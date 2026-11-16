@@ -51,19 +51,19 @@ export const ClockVsErrorChart: React.FC<{ clockData: ClockPsychology }> = ({ cl
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile
           compact
-          label="Blunders impulsivos (≤ 3 s)"
+          label="Blunders impulsivos"
           value={clockData.blunders_under_3s_with_ample_time}
           icon={Zap}
           tone="rose"
-          hint="Con tiempo de sobra en el reloj"
+          hint="Jugados al instante, con tiempo de sobra"
         />
         <StatTile
           compact
-          label="Blunders en apuro (< 10 s)"
+          label="Blunders en apuro de tiempo"
           value={clockData.blunders_in_time_trouble_under_10s}
           icon={AlertTriangle}
           tone="amber"
-          hint="Bajo presión extrema"
+          hint="Con el reloj casi agotado"
         />
         <StatTile
           compact

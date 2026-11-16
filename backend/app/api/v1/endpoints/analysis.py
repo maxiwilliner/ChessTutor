@@ -1,11 +1,14 @@
 import json
-import asyncio
 import logging
 from typing import Optional, List
+
+import chess.engine
+import httpx
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.v1.params import UsernamePath, UsernameQuery
 from backend.app.core.database import get_db, AsyncSessionLocal
 from backend.app.models.diagnosis import PlayerDiagnosisSummary
 from backend.app.models.puzzles import BlunderBankItem
@@ -23,65 +26,85 @@ client = ChessComClient()
 _LATEST_ANALYSIS: dict = {}
 
 
+def _event(stage: str, message: str, progress_pct: int, **extra) -> str:
+    return f"data: {json.dumps({'stage': stage, 'message': message, 'progress_pct': progress_pct, **extra})}\n\n"
+
+
+def describe_analysis_error(exc: Exception) -> str:
+    """User-facing (Spanish) explanation of an analysis failure."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code == 429:
+            return "Chess.com está limitando las peticiones. Espera un minuto y vuelve a intentarlo."
+        return f"Chess.com respondió con un error ({exc.response.status_code}). Inténtalo de nuevo en unos minutos."
+    if isinstance(exc, httpx.HTTPError):
+        return "No se pudo contactar con Chess.com. Revisa tu conexión a internet."
+    if isinstance(exc, (FileNotFoundError, PermissionError, chess.engine.EngineError, chess.engine.EngineTerminatedError)):
+        return "No se pudo iniciar Stockfish. Instálalo o configura STOCKFISH_PATH en el archivo .env."
+    return f"Error inesperado durante el análisis ({type(exc).__name__}). Revisa los logs del backend."
+
+
 async def analysis_event_generator(username: str, time_class: str, limit: int):
     """
     Generator yielding Server-Sent Events (SSE) detailing the analysis progress.
+    Any failure is reported as an `error` event instead of breaking the stream.
     """
-    yield f"data: {json.dumps({'stage': 'fetching_games', 'message': f'Descargando partidas recientes de {username}...', 'progress_pct': 5})}\n\n"
+    try:
+        async for event in _run_analysis(username, time_class, limit):
+            yield event
+    except Exception as exc:  # noqa: BLE001 - every failure must reach the client
+        logger.exception("Analysis failed for %s", username)
+        yield _event("error", describe_analysis_error(exc), 0)
+
+
+async def _run_analysis(username: str, time_class: str, limit: int):
+    yield _event("fetching_games", f"Descargando partidas recientes de {username}...", 5)
 
     async with AsyncSessionLocal() as db_session:
         games = await client.get_recent_games(
-            username=username,
-            time_class=time_class,
-            limit=limit,
-            db_session=db_session
+            username=username, time_class=time_class, limit=limit, db_session=db_session
         )
-
         if not games:
-            yield f"data: {json.dumps({'stage': 'error', 'message': f'No se encontraron partidas {time_class} para {username}.', 'progress_pct': 0})}\n\n"
+            yield _event("error", f"No se encontraron partidas {time_class} para {username} en Chess.com.", 0)
             return
 
         total_games = len(games)
-        yield f"data: {json.dumps({'stage': 'evaluating_start', 'total_games': total_games, 'message': f'Analizando {total_games} partidas con Stockfish...', 'progress_pct': 10})}\n\n"
+        yield _event("evaluating_start", f"Analizando {total_games} partidas con Stockfish...", 10, total_games=total_games)
 
         evaluated_games_moves = []
         for i, game in enumerate(games, 1):
             pct = 10 + int((i / total_games) * 75)
-            yield f"data: {json.dumps({'stage': 'evaluating', 'current_game': i, 'total_games': total_games, 'message': f'Evaluando partida {i} de {total_games} ({game.white_username} vs {game.black_username})...', 'progress_pct': pct})}\n\n"
-            
-            # Evaluate with Stockfish (Pass 1 & Pass 2)
-            moves_evaluated = await evaluate_game_smart(game, db_session=db_session)
-            evaluated_games_moves.append(moves_evaluated)
+            yield _event(
+                "evaluating",
+                f"Evaluando partida {i} de {total_games} ({game.white_username} vs {game.black_username})...",
+                pct,
+                current_game=i,
+                total_games=total_games,
+            )
+            evaluated_games_moves.append(await evaluate_game_smart(game, db_session=db_session))
 
-        yield f"data: {json.dumps({'stage': 'classifying', 'message': 'Clasificando errores tácticos, aperturas y psicología del reloj...', 'progress_pct': 92})}\n\n"
+    yield _event("classifying", "Clasificando errores tácticos, aperturas y psicología del reloj...", 92)
 
-        summary, puzzles = assemble_diagnosis_and_puzzles(
-            username=username,
-            time_class=time_class,
-            games=games,
-            evaluated_games_moves=evaluated_games_moves
-        )
+    summary, puzzles = assemble_diagnosis_and_puzzles(
+        username=username, time_class=time_class, games=games, evaluated_games_moves=evaluated_games_moves
+    )
 
-        # Persist puzzles in SQLite idempotently (preserving any prior user SRS progress)
-        try:
-            async with AsyncSessionLocal() as session:
-                await save_puzzles_idempotent(session, username, puzzles, analyzed_game_ids=[g.id for g in games])
-        except Exception as e:
-            logger.error(f"Error persisting puzzles to database: {e}")
+    # Persist puzzles (upsert keeps the user's SRS progress)
+    try:
+        async with AsyncSessionLocal() as session:
+            await save_puzzles_idempotent(session, username, puzzles, analyzed_game_ids=[g.id for g in games])
+    except Exception as e:
+        logger.error(f"Error persisting puzzles to database: {e}")
 
-        # Store latest analysis in memory cache
-        _LATEST_ANALYSIS[username.lower()] = {
-            "summary": summary,
-            "puzzles": puzzles
-        }
+    # The tutor report is generated lazily (and once) by /tutor/report
+    _LATEST_ANALYSIS[username.lower()] = {"summary": summary, "puzzles": puzzles, "report": None}
 
-        yield f"data: {json.dumps({'stage': 'complete', 'message': 'Análisis finalizado con éxito.', 'progress_pct': 100, 'summary': summary.model_dump(), 'puzzles_count': len(puzzles)})}\n\n"
+    yield _event("complete", "Análisis finalizado con éxito.", 100, summary=summary.model_dump(), puzzles_count=len(puzzles))
 
 
 @router.get("/stream")
 async def stream_analysis(
-    username: str = Query(..., description="Chess.com username"),
-    time_class: Optional[str] = Query("rapid", description="Time control (rapid, blitz, bullet)"),
+    username: UsernameQuery,
+    time_class: str = Query("rapid", pattern="^(rapid|blitz|bullet|daily)$", description="Time control"),
     limit: int = Query(15, ge=1, le=50, description="Number of games to analyze")
 ):
     """
@@ -94,7 +117,7 @@ async def stream_analysis(
 
 
 @router.get("/summary/{username}", response_model=PlayerDiagnosisSummary)
-async def get_latest_summary(username: str):
+async def get_latest_summary(username: UsernamePath):
     """
     Returns the latest computed PlayerDiagnosisSummary for the specified user.
     """
@@ -106,7 +129,7 @@ async def get_latest_summary(username: str):
 
 @router.get("/puzzles/{username}", response_model=List[BlunderBankItem])
 async def get_latest_puzzles(
-    username: str,
+    username: UsernamePath,
     theme: Optional[str] = Query(None, description="Filter by tactical theme"),
     top_leak_only: bool = Query(False, description="Filter by user's top tactical leak"),
     status: str = Query("all", description="Filter by status: all, unsolved, mastered, review_due"),

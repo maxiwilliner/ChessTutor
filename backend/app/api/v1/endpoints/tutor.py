@@ -1,3 +1,4 @@
+from backend.app.api.v1.params import UsernamePath
 from fastapi import APIRouter, HTTPException
 from backend.app.models.diagnosis import PlayerDiagnosisSummary
 from backend.app.models.tutor import TutorPedagogicalReport
@@ -16,7 +17,7 @@ async def generate_diagnosis(summary: PlayerDiagnosisSummary):
 
 
 @router.get("/report/{username}", response_model=TutorPedagogicalReport)
-async def get_report_by_username(username: str):
+async def get_report_by_username(username: UsernamePath):
     """
     Returns the pedagogical diagnosis for the user's latest analysis.
     """
@@ -26,5 +27,8 @@ async def get_report_by_username(username: str):
             status_code=404,
             detail=f"No recent analysis found for '{username}'. Please run an analysis stream first."
         )
-    return await generate_tutor_report(analysis["summary"])
+    # Generated once per analysis: the LLM is not called again on every dashboard visit.
+    if analysis.get("report") is None:
+        analysis["report"] = await generate_tutor_report(analysis["summary"])
+    return analysis["report"]
 

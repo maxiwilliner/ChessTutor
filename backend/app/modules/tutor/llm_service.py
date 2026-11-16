@@ -1,9 +1,9 @@
-import os
 import json
 import logging
 from typing import Optional
 import httpx
 
+from backend.app.core.config import settings
 from backend.app.models.diagnosis import PlayerDiagnosisSummary
 from backend.app.models.tutor import TutorPedagogicalReport, TutorLeak, DailyPlanItem
 from backend.app.modules.tutor.prompts import SYSTEM_PROMPT, build_user_prompt
@@ -165,11 +165,10 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
 async def generate_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagogicalReport:
     """
     Generates a personalized pedagogical report.
-    Uses OpenAI / Gemini if OPENAI_API_KEY or GEMINI_API_KEY is defined in environment,
+    Uses OpenAI if OPENAI_API_KEY is set (in .env or the environment),
     otherwise falls back cleanly to the rule-based pedagogical engine.
     """
-    openai_key = os.getenv("OPENAI_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    openai_key = settings.OPENAI_API_KEY
 
     if openai_key:
         try:
@@ -180,7 +179,7 @@ async def generate_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagog
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
                     json={
-                        "model": "gpt-4o-mini",
+                        "model": settings.OPENAI_MODEL,
                         "messages": [
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": prompt}
@@ -192,6 +191,7 @@ async def generate_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagog
                     raw_content = res.json()["choices"][0]["message"]["content"]
                     parsed = json.loads(raw_content)
                     return TutorPedagogicalReport.model_validate(parsed)
+                logger.warning(f"OpenAI returned HTTP {res.status_code}, using the deterministic tutor engine.")
         except Exception as e:
             logger.warning(f"OpenAI call failed ({e}), falling back to deterministic tutor engine.")
 

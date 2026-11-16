@@ -1,4 +1,5 @@
 from typing import List, Optional
+from backend.app.api.v1.params import UsernamePath
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ client = ChessComClient()
 
 
 @router.get("/profile/{username}", response_model=PlayerProfile)
-async def get_profile(username: str):
+async def get_profile(username: UsernamePath):
     """
     Returns public Chess.com profile information for a user.
     """
@@ -23,7 +24,7 @@ async def get_profile(username: str):
 
 
 @router.get("/stats/{username}", response_model=PlayerStats)
-async def get_stats(username: str):
+async def get_stats(username: UsernamePath):
     """
     Returns Chess.com rating stats (Rapid, Blitz, Bullet) for a user.
     """
@@ -35,7 +36,7 @@ async def get_stats(username: str):
 
 @router.get("/games/{username}", response_model=List[NormalizedGame])
 async def get_recent_games(
-    username: str,
+    username: UsernamePath,
     time_class: Optional[str] = Query("rapid", description="Time control filter: rapid, blitz, bullet, daily"),
     limit: int = Query(30, ge=1, le=100, description="Number of games to retrieve"),
     db: AsyncSession = Depends(get_db)
@@ -54,7 +55,7 @@ async def get_recent_games(
 
 @router.get("/openings/{username}", response_model=List[OpeningStatItem])
 async def get_opening_stats(
-    username: str,
+    username: UsernamePath,
     time_class: Optional[str] = Query("rapid", description="Time control filter: rapid, blitz, bullet"),
     limit: int = Query(30, ge=1, le=100, description="Number of recent games to analyze"),
     db: AsyncSession = Depends(get_db)

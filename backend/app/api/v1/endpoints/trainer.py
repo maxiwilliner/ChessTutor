@@ -1,6 +1,7 @@
 import chess
 import logging
 from typing import Optional
+from backend.app.api.v1.params import UsernamePath
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +39,7 @@ async def submit_puzzle_attempt(
 
 @router.get("/stats/{username}", response_model=TrainerStatsResponse)
 async def get_trainer_stats(
-    username: str,
+    username: UsernamePath,
     db: AsyncSession = Depends(get_db)
 ):
     """
