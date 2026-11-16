@@ -11,6 +11,12 @@ from backend.app.modules.tutor.prompts import SYSTEM_PROMPT, build_user_prompt
 logger = logging.getLogger(__name__)
 
 
+FALLBACK_LEAK_TITLES = {
+    "MIDDLEGAME_COLLAPSE": "Derrumbe en el medio juego",
+    "GENERAL_TACTICAL_CALCULATION": "Precisión táctica general",
+}
+
+
 def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagogicalReport:
     """
     High-quality pedagogical generator used when external LLM API keys are not configured.
@@ -84,7 +90,7 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
         else:
             leaks.append(
                 TutorLeak(
-                    title=f"Fuga #{idx}: {flag.code.replace('_', ' ').title()}",
+                    title=f"Fuga #{idx}: {FALLBACK_LEAK_TITLES.get(flag.code, 'Cálculo táctico')}",
                     severity=flag.severity,
                     explanation=flag.metric_reference,
                     tactical_concept="Cálculo Táctico y Prevención de Errores.",

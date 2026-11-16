@@ -4,9 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
-from backend.app.models.chesscom import PlayerProfile, PlayerStats, NormalizedGame, OpeningStatItem
+from backend.app.models.chesscom import PlayerProfile, PlayerStats, NormalizedGame
 from backend.app.modules.chesscom.client import ChessComClient
-from backend.app.modules.heuristics.openings import analyze_openings
 
 router = APIRouter(prefix="/chesscom", tags=["Chess.com"])
 client = ChessComClient()
@@ -51,25 +50,4 @@ async def get_recent_games(
         db_session=db
     )
     return games
-
-
-@router.get("/openings/{username}", response_model=List[OpeningStatItem])
-async def get_opening_stats(
-    username: UsernamePath,
-    time_class: Optional[str] = Query("rapid", description="Time control filter: rapid, blitz, bullet"),
-    limit: int = Query(30, ge=1, le=100, description="Number of recent games to analyze"),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Analyzes opening repertoire and win/draw/loss rates by ECO code from recent games.
-    """
-    games = await client.get_recent_games(
-        username=username,
-        time_class=time_class,
-        limit=limit,
-        db_session=db
-    )
-    if not games:
-        return []
-    return analyze_openings(games)
 

@@ -118,8 +118,7 @@ def detect_fork(board_after_user_move: chess.Board, opponent_best_reply: Optiona
     temp_board.push(opponent_best_reply)
 
     forking_sq = opponent_best_reply.to_square
-    opponent_color = temp_board.turn  # After push, temp_board.turn is user's turn
-    user_color = temp_board.turn
+    user_color = temp_board.turn  # after the opponent's reply it is the user's turn again
 
     targets = []
     attacks = temp_board.attacks(forking_sq)

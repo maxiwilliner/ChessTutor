@@ -80,8 +80,6 @@ def generate_hints_for_blunder(
     """
     Generates 3 tiers of pedagogical hints based on the tactical motif and engine solution.
     """
-    board = chess.Board(fen_before)
-    user_color_str = "blancas" if board.turn == chess.WHITE else "negras"
     best_move = chess.Move.from_uci(best_move_uci) if best_move_uci else None
     target_square_name = chess.square_name(best_move.to_square) if best_move else "la casilla clave"
 

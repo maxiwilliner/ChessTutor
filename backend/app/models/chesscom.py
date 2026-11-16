@@ -58,15 +58,3 @@ class NormalizedGame(BaseModel):
     moves_count: int
     moves: List[MoveWithClock] = []
 
-
-class OpeningStatItem(BaseModel):
-    eco: str
-    opening_name: str
-    color: Literal["white", "black"]
-    games_played: int
-    wins: int
-    draws: int
-    losses: int
-    win_rate: float = Field(..., description="Win rate between 0.0 and 1.0")
-    avg_game_length_moves: float
-
