@@ -94,9 +94,14 @@ async def test_idempotent_puzzle_save_and_retrieval():
         count1 = await save_puzzles_idempotent(session, user, [p1, p2])
         assert count1 == 2
 
-        # 2. Re-analysis / duplicate insert -> 0 inserted, no errors
-        count2 = await save_puzzles_idempotent(session, user, [p1, p2])
-        assert count2 == 0
+        # 2. Re-analysis upserts: no duplicates, content refreshed
+        p1_refreshed = p1.model_copy(deep=True)
+        p1_refreshed.tutor_hints.level_1_conceptual = "Pista actualizada"
+        count2 = await save_puzzles_idempotent(session, user, [p1_refreshed, p2])
+        assert count2 == 2
+        all_now = await get_user_puzzles(session, user)
+        assert len(all_now) == 2
+        assert next(p for p in all_now if p.id == p1.id).tutor_hints.level_1_conceptual == "Pista actualizada"
 
         # 3. Retrieve all
         puzzles = await get_user_puzzles(session, user)
@@ -309,3 +314,29 @@ async def test_get_puzzles_endpoint_with_filters():
         leak_items = res_leak.json()
         assert len(leak_items) >= 1
 
+
+
+@pytest.mark.asyncio
+async def test_reanalysis_removes_stale_puzzles_but_keeps_practised_ones():
+    await init_db()
+    uid = uuid.uuid4().hex[:8]
+    user = f"stale_{uid}"
+    game = f"g{uid}"
+    keep = sample_puzzle(puzzle_id=f"bb_{game}_m10_white", username=user)
+    stale = sample_puzzle(puzzle_id=f"bb_{game}_m20_white", username=user)
+    practised = sample_puzzle(puzzle_id=f"bb_{game}_m30_white", username=user)
+    other_game = sample_puzzle(puzzle_id=f"bb_other{uid}_m5_white", username=user)
+
+    async with AsyncSessionLocal() as session:
+        await save_puzzles_idempotent(session, user, [keep, stale, practised, other_game])
+        await record_puzzle_attempt(
+            session, PuzzleAttemptRequest(username=user, puzzle_id=practised.id, played_uci="d1d8", is_solved=True)
+        )
+        # Re-analysis of `game` now only yields `keep`
+        await save_puzzles_idempotent(session, user, [keep], analyzed_game_ids=[game])
+        ids = {p.id for p in await get_user_puzzles(session, user)}
+
+    assert keep.id in ids
+    assert stale.id not in ids          # no longer qualifies and was never practised
+    assert practised.id in ids          # has SRS progress -> kept
+    assert other_game.id in ids         # belongs to a game that was not re-analysed

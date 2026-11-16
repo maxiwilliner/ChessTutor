@@ -178,6 +178,8 @@ class ChessComClient:
 
                 game_norm = parse_game_pgn(pgn_text, username)
                 if game_norm:
+                    if isinstance(raw_game.get("end_time"), int):
+                        game_norm.end_time = raw_game["end_time"]
                     normalized_games.append(game_norm)
                     if len(normalized_games) >= limit:
                         return normalized_games

@@ -6,6 +6,7 @@ import chess.engine
 
 from backend.app.core.config import settings
 from backend.app.models.engine import PositionEvaluation
+from backend.app.modules.engine.notation import uci_line_to_san
 
 logger = logging.getLogger(__name__)
 
@@ -106,21 +107,9 @@ class StockfishPool:
                 else:
                     score_cp = score_white.score()
 
-            pv_moves = primary.get("pv", [])
-            best_move = pv_moves[0] if pv_moves else None
-            best_move_uci = best_move.uci() if best_move else None
-            best_move_san = board.san(best_move) if best_move and best_move in board.legal_moves else None
-
-            # Generate SAN for PV line
-            pv_uci = [m.uci() for m in pv_moves[:5]]
-            pv_san: List[str] = []
-            temp_board = board.copy()
-            for m in pv_moves[:5]:
-                if m in temp_board.legal_moves:
-                    pv_san.append(temp_board.san(m))
-                    temp_board.push(m)
-                else:
-                    break
+            pv_uci = [m.uci() for m in primary.get("pv", [])[:5]]
+            best_move_uci = pv_uci[0] if pv_uci else None
+            best_move_san, pv_san = uci_line_to_san(fen, pv_uci)
 
             return PositionEvaluation(
                 fen=fen,

@@ -1,6 +1,7 @@
+import statistics
 from collections import defaultdict
-from typing import List, Dict, Tuple, Any
-import math
+from datetime import datetime, timezone
+from typing import List, Dict, Tuple
 import chess
 
 from backend.app.models.chesscom import NormalizedGame
@@ -24,8 +25,40 @@ from backend.app.models.puzzles import (
     BlunderClassification,
     TutorHints
 )
+from backend.app.modules.chesscom.parser import parse_time_control
+from backend.app.modules.engine.scoring import clamp_cp, move_accuracy
 from backend.app.modules.heuristics.tactical import classify_tactical_motif
 from backend.app.modules.heuristics.clock import tag_move_psychology, analyze_clock_psychology
+
+def game_accuracy(moves: List[EvaluatedMove]) -> float:
+    """
+    Accuracy of one game (0-100), Lichess style: average of the arithmetic and harmonic means of the
+    per-move accuracies. The harmonic mean punishes blunders, which a plain average dilutes among easy moves.
+    """
+    acc = [move_accuracy(m.eval_before_cp, m.eval_after_cp) for m in moves]
+    if not acc:
+        return 0.0
+    return (statistics.mean(acc) + statistics.harmonic_mean([max(a, 1.0) for a in acc])) / 2
+
+
+def overall_accuracy(evaluated_games_moves: List[List[EvaluatedMove]]) -> float:
+    per_game = [game_accuracy(moves) for moves in evaluated_games_moves if moves]
+    return round(statistics.mean(per_game), 1) if per_game else 0.0
+
+
+MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def format_period(games: List[NormalizedGame]) -> str:
+    """Rango de fechas de las partidas analizadas, p. ej. "12 oct – 14 nov 2026"."""
+    stamps = [g.end_time for g in games if g.end_time and g.end_time > 0]
+    if not stamps:
+        return "Partidas recientes"
+    first, last = (datetime.fromtimestamp(t, tz=timezone.utc) for t in (min(stamps), max(stamps)))
+    fmt = lambda d, year: f"{d.day} {MONTHS_ES[d.month - 1]}" + (f" {d.year}" if year else "")
+    if first.date() == last.date():
+        return fmt(last, True)
+    return f"{fmt(first, first.year != last.year)} – {fmt(last, True)}"
 
 
 THEME_DESCRIPTIONS = {
@@ -43,7 +76,6 @@ def generate_hints_for_blunder(
     fen_before: str,
     best_move_san: str,
     best_move_uci: str,
-    user_move_san: str
 ) -> TutorHints:
     """
     Generates 3 tiers of pedagogical hints based on the tactical motif and engine solution.
@@ -109,12 +141,7 @@ def assemble_diagnosis_and_puzzles(
 
     # Tag and classify every user move
     for game, moves in zip(games, evaluated_games_moves):
-        # Track opening eval at move 12
-        eval_at_12 = 0.0
-        for m in moves:
-            if m.move_number <= 12:
-                eval_at_12 = m.eval_after_cp
-
+        base_time, _ = parse_time_control(game.time_control)
         for m in moves:
             all_user_moves.append(m)
 
@@ -128,13 +155,14 @@ def assemble_diagnosis_and_puzzles(
                     eval_before_cp=m.eval_before_cp,
                     eval_after_cp=m.eval_after_cp,
                     cpl=m.cpl,
-                    opponent_pv=m.pv_uci,
+                    opponent_pv=m.refutation_uci,
                     move_number=m.move_number
                 )
                 psy_tag = tag_move_psychology(
                     time_spent=m.time_spent_seconds,
                     clock_remaining=m.clock_remaining_seconds,
-                    cpl=m.cpl
+                    is_serious_error=m.classification in ("blunder", "error"),
+                    base_time=base_time,
                 )
                 m.tactical_theme = theme
                 m.psychological_tag = psy_tag
@@ -146,7 +174,6 @@ def assemble_diagnosis_and_puzzles(
                         fen_before=m.fen_before,
                         best_move_san=m.best_move_san or m.best_move_uci,
                         best_move_uci=m.best_move_uci,
-                        user_move_san=m.user_move_san
                     )
                     blunder_item = BlunderBankItem(
                         id=f"bb_{game.id}_m{m.move_number}_{m.turn}",
@@ -175,7 +202,9 @@ def assemble_diagnosis_and_puzzles(
                             eval_after_user_move=round(m.eval_after_cp / 100.0, 2),
                             cpl=m.cpl,
                             pv_uci=m.pv_uci,
-                            pv_san=m.pv_san
+                            pv_san=m.pv_san,
+                            refutation_uci=m.refutation_uci,
+                            refutation_san=m.refutation_san,
                         ),
                         classification=BlunderClassification(
                             phase=m.phase,
@@ -193,8 +222,7 @@ def assemble_diagnosis_and_puzzles(
     blunders_per_game = round(blunders_total / total_games, 2) if total_games > 0 else 0.0
 
     avg_cpl = round(sum(m.cpl for m in all_user_moves) / len(all_user_moves), 1) if all_user_moves else 0.0
-    # Accuracy score (0-100) based on average centipawn loss
-    accuracy_score = round(max(10.0, min(99.0, 100.0 * math.exp(-0.005 * avg_cpl))), 1)
+    accuracy_score = overall_accuracy(evaluated_games_moves)
 
     # 2. Phase distribution
     phase_moves = {"opening": [], "middlegame": [], "endgame": []}
@@ -251,7 +279,7 @@ def assemble_diagnosis_and_puzzles(
             m12_eval = 0.0
             for m in moves:
                 if m.move_number <= 12:
-                    m12_eval = m.eval_after_cp
+                    m12_eval = clamp_cp(m.eval_after_cp)
                 if m.classification in ("blunder", "error") and m.tactical_theme:
                     blunder_themes_in_op.append(m.tactical_theme)
             evals_at_12.append(m12_eval)
@@ -303,7 +331,7 @@ def assemble_diagnosis_and_puzzles(
             AlgorithmicFlag(
                 code="TIME_TROUBLE_PANIC",
                 severity="HIGH",
-                metric_reference=f"{clock_stats.blunders_in_time_trouble_under_10s} errores graves cometidos con menos de 10 segundos en el reloj."
+                metric_reference=f"{clock_stats.blunders_in_time_trouble_under_10s} errores graves cometidos en apuro de tiempo."
             )
         )
 
@@ -348,7 +376,7 @@ def assemble_diagnosis_and_puzzles(
             elo_current=current_elo,
             time_class=time_class,
             games_analyzed=total_games,
-            period="Recent Archives"
+            period=format_period(games)
         ),
         overall_metrics=OverallMetrics(
             win_rate=win_rate,

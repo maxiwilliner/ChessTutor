@@ -65,7 +65,7 @@ async def analysis_event_generator(username: str, time_class: str, limit: int):
         # Persist puzzles in SQLite idempotently (preserving any prior user SRS progress)
         try:
             async with AsyncSessionLocal() as session:
-                await save_puzzles_idempotent(session, username, puzzles)
+                await save_puzzles_idempotent(session, username, puzzles, analyzed_game_ids=[g.id for g in games])
         except Exception as e:
             logger.error(f"Error persisting puzzles to database: {e}")
 

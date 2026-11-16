@@ -76,6 +76,8 @@ class BlunderBankEntity(Base):
     cpl = Column(Float, default=0.0)
     pv_uci_json = Column(Text, nullable=True)
     pv_san_json = Column(Text, nullable=True)
+    refutation_uci_json = Column(Text, nullable=True)
+    refutation_san_json = Column(Text, nullable=True)
     phase = Column(String(20), index=True, nullable=False)
     theme = Column(String(50), index=True, nullable=False)
     psychological_tag = Column(String(30), index=True, nullable=False)

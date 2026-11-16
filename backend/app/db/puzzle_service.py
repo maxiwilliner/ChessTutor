@@ -1,9 +1,11 @@
 import json
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict
-from sqlalchemy import select, func, and_, or_
+from typing import Dict, Iterable, List, Optional
+from sqlalchemy import select, func, and_, or_, delete, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
+
+from backend.app.modules.engine.notation import uci_line_to_san
 
 
 def utc_now_naive() -> datetime:
@@ -32,26 +34,21 @@ from backend.app.models.puzzles import (
 async def save_puzzles_idempotent(
     session: AsyncSession,
     username: str,
-    puzzles: List[BlunderBankItem]
+    puzzles: List[BlunderBankItem],
+    analyzed_game_ids: Optional[Iterable[str]] = None,
 ) -> int:
     """
-    Persists puzzles into BlunderBankEntity idempotently.
-    Uses ON CONFLICT DO NOTHING so existing puzzles and their user progress are preserved.
+    Persists puzzles with an upsert keyed on the deterministic id.
+    Re-analysing refreshes the content (engine line, theme, hints...) while the user's SRS
+    progress, stored in `user_puzzle_progress`, is untouched.
+    If `analyzed_game_ids` is given, puzzles from those games that no longer qualify
+    (e.g. after a classification change) are deleted, unless the user already practised them.
+    Returns the number of puzzles written.
     """
-    if not puzzles:
-        return 0
-
-    inserted_count = 0
     clean_username = username.strip().lower()
 
     for item in puzzles:
-        hints_dict = item.tutor_hints.model_dump()
-        pv_uci_str = json.dumps(item.engine_solution.pv_uci)
-        pv_san_str = json.dumps(item.engine_solution.pv_san)
-        hints_str = json.dumps(hints_dict)
-
-        stmt = sqlite_upsert(BlunderBankEntity).values(
-            id=item.id,
+        values = dict(
             username=clean_username,
             game_url=item.game_url,
             white=item.metadata.white,
@@ -72,21 +69,37 @@ async def save_puzzles_idempotent(
             eval_before=item.engine_solution.eval_before,
             eval_after_user_move=item.engine_solution.eval_after_user_move,
             cpl=item.engine_solution.cpl,
-            pv_uci_json=pv_uci_str,
-            pv_san_json=pv_san_str,
+            pv_uci_json=json.dumps(item.engine_solution.pv_uci),
+            pv_san_json=json.dumps(item.engine_solution.pv_san),
+            refutation_uci_json=json.dumps(item.engine_solution.refutation_uci),
+            refutation_san_json=json.dumps(item.engine_solution.refutation_san),
             phase=item.classification.phase,
             theme=item.classification.theme,
             psychological_tag=item.classification.psychological_tag,
-            hints_json=hints_str,
-            created_at=utc_now_naive()
-        ).on_conflict_do_nothing(index_elements=["id"])
+            hints_json=json.dumps(item.tutor_hints.model_dump()),
+        )
+        stmt = sqlite_upsert(BlunderBankEntity).values(id=item.id, created_at=utc_now_naive(), **values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={key: stmt.excluded[key] for key in values if key != "username"},
+        )
+        await session.execute(stmt)
 
-        res = await session.execute(stmt)
-        if res.rowcount > 0:
-            inserted_count += 1
+    if analyzed_game_ids:
+        keep_ids = [p.id for p in puzzles]
+        has_progress = exists().where(UserPuzzleProgressEntity.puzzle_id == BlunderBankEntity.id)
+        for game_id in analyzed_game_ids:
+            conditions = [
+                BlunderBankEntity.username == clean_username,
+                BlunderBankEntity.id.startswith(f"bb_{game_id}_m", autoescape=True),
+                ~has_progress,
+            ]
+            if keep_ids:
+                conditions.append(BlunderBankEntity.id.not_in(keep_ids))
+            await session.execute(delete(BlunderBankEntity).where(*conditions))
 
     await session.commit()
-    return inserted_count
+    return len(puzzles)
 
 
 async def get_user_puzzles(
@@ -159,6 +172,11 @@ async def get_user_puzzles(
         hints_dict = json.loads(entity.hints_json) if entity.hints_json else {}
         pv_uci = json.loads(entity.pv_uci_json) if entity.pv_uci_json else []
         pv_san = json.loads(entity.pv_san_json) if entity.pv_san_json else []
+        best_san = entity.best_move_san
+        if not pv_san or best_san == entity.best_move_uci:
+            # Ejercicios guardados desde la caché antigua: notación UCI sin SAN.
+            san, line = uci_line_to_san(entity.fen_before, pv_uci or [entity.best_move_uci])
+            best_san, pv_san = san or best_san, line or pv_san
 
         hints = TutorHints(
             level_1_conceptual=hints_dict.get("level_1_conceptual", ""),
@@ -188,12 +206,14 @@ async def get_user_puzzles(
             ),
             engine_solution=BlunderEngineSolution(
                 best_move_uci=entity.best_move_uci,
-                best_move_san=entity.best_move_san,
+                best_move_san=best_san,
                 eval_before=entity.eval_before or 0.0,
                 eval_after_user_move=entity.eval_after_user_move or 0.0,
                 cpl=entity.cpl or 0.0,
                 pv_uci=pv_uci,
-                pv_san=pv_san
+                pv_san=pv_san,
+                refutation_uci=json.loads(entity.refutation_uci_json) if entity.refutation_uci_json else [],
+                refutation_san=json.loads(entity.refutation_san_json) if entity.refutation_san_json else [],
             ),
             classification=BlunderClassification(
                 phase=entity.phase,  # type: ignore

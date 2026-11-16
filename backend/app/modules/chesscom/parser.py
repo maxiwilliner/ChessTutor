@@ -1,5 +1,6 @@
 import io
 import re
+from datetime import datetime, timezone
 from typing import Optional, Tuple, List
 import chess
 import chess.pgn
@@ -72,6 +73,24 @@ def format_opening_from_url(eco_url: Optional[str]) -> str:
     slug = eco_url.rstrip("/").split("/")[-1]
     name = slug.replace("-", " ")
     return name
+
+
+def _parse_end_time(headers) -> int:
+    """
+    Unix timestamp of the end of the game. Chess.com PGNs carry EndDate "2026.11.12" + EndTime "12:34:56" (UTC);
+    an integer EndTime is also accepted. Returns 0 if unknown (the JSON archive's `end_time` is preferred, see client).
+    """
+    end_time = headers.get("EndTime", "")
+    if end_time.isdigit():
+        return int(end_time)
+    date = headers.get("EndDate") or headers.get("UTCDate") or headers.get("Date")
+    if date and end_time:
+        try:
+            dt = datetime.strptime(f"{date} {end_time}", "%Y.%m.%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except ValueError:
+            pass
+    return 0
 
 
 def parse_game_pgn(pgn_text: str, target_username: str) -> Optional[NormalizedGame]:
@@ -176,11 +195,7 @@ def parse_game_pgn(pgn_text: str, target_username: str) -> Optional[NormalizedGa
             )
         )
 
-    end_time_int = 0
-    try:
-        end_time_int = int(headers.get("EndTime", headers.get("UTCDate", "0").replace(".", "")))
-    except ValueError:
-        pass
+    end_time_int = _parse_end_time(headers)
 
     game_id = headers.get("Link", headers.get("Site", "")).rstrip("/").split("/")[-1]
     if not game_id or game_id == "chess.com":

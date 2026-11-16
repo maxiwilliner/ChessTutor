@@ -27,6 +27,9 @@ class BlunderEngineSolution(BaseModel):
     cpl: float
     pv_uci: List[str] = []
     pv_san: List[str] = []
+    # Mejor respuesta del rival tras la jugada del usuario ("por qué fue un error")
+    refutation_uci: List[str] = []
+    refutation_san: List[str] = []
 
 
 class BlunderClassification(BaseModel):

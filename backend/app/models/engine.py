@@ -28,13 +28,17 @@ class EvaluatedMove(BaseModel):
     eval_before_cp: float = Field(..., description="Evaluation before move from moving player's perspective")
     eval_after_cp: float = Field(..., description="Evaluation after move from moving player's perspective")
     cpl: float = Field(..., description="Centipawn Loss (loss in advantage for the player)")
-    classification: Literal["best", "excellent", "good", "inaccuracy", "error", "blunder"]
-    
+    classification: Literal["best", "good", "inaccuracy", "error", "blunder"]
+
     # Solution
     best_move_uci: Optional[str] = None
     best_move_san: Optional[str] = None
     pv_uci: List[str] = []
     pv_san: List[str] = []
+
+    # Refutation: the opponent's best line after the user's move (only for inaccuracies or worse)
+    refutation_uci: List[str] = []
+    refutation_san: List[str] = []
     
     # Heuristics tags
     phase: Literal["opening", "middlegame", "endgame"] = "middlegame"

@@ -45,11 +45,21 @@ def test_detect_missed_mate():
 
 
 def test_clock_psychology_tagging():
-    # Impulsive: blunder done in 2.0s with 180s left
-    assert tag_move_psychology(time_spent=2.0, clock_remaining=180.0, cpl=250.0) == "impulsive"
+    # Rapid 10+0: blunder in 2 s with 180 s left -> impulsive
+    assert tag_move_psychology(time_spent=2.0, clock_remaining=180.0, is_serious_error=True, base_time=600) == "impulsive"
+    # Rapid 10+0: 25 s left is time trouble (threshold 30 s)
+    assert tag_move_psychology(time_spent=4.0, clock_remaining=25.0, is_serious_error=True, base_time=600) == "time_trouble"
+    # Slow, deliberate blunder -> normal
+    assert tag_move_psychology(time_spent=15.0, clock_remaining=120.0, is_serious_error=True, base_time=600) == "normal"
+    # Not a serious error -> never tagged
+    assert tag_move_psychology(time_spent=1.0, clock_remaining=500.0, is_serious_error=False, base_time=600) == "normal"
 
-    # Time trouble: blunder done with 8.0s left
-    assert tag_move_psychology(time_spent=4.0, clock_remaining=8.0, cpl=150.0) == "time_trouble"
 
-    # Normal move
-    assert tag_move_psychology(time_spent=15.0, clock_remaining=120.0, cpl=150.0) == "normal"
+def test_clock_thresholds_are_relative_to_time_control():
+    # Bullet 1+0: 2 s per move is normal speed, not impulsive
+    assert tag_move_psychology(time_spent=2.0, clock_remaining=40.0, is_serious_error=True, base_time=60) == "normal"
+    # Bullet 1+0: an instant move (0.8 s) with 40 s left is impulsive
+    assert tag_move_psychology(time_spent=0.8, clock_remaining=40.0, is_serious_error=True, base_time=60) == "impulsive"
+    # Bullet: 15 s left is not panic yet (threshold 10 s); 8 s is
+    assert tag_move_psychology(time_spent=1.5, clock_remaining=15.0, is_serious_error=True, base_time=60) == "normal"
+    assert tag_move_psychology(time_spent=1.5, clock_remaining=8.0, is_serious_error=True, base_time=60) == "time_trouble"
