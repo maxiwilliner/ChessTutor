@@ -2,92 +2,103 @@
 
 import React from "react";
 import { ClockPsychology } from "@/types/api";
-import { Clock, Zap, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Card, SectionHeader } from "@/components/ui/Card";
+import { StatTile } from "@/components/ui/StatTile";
+import { cn } from "@/lib/cn";
+import { Clock, Zap, AlertTriangle, Scale, Brain } from "lucide-react";
 
-interface ClockVsErrorChartProps {
-  clockData: ClockPsychology;
-}
+const VERDICT: Record<ClockPsychology["primary_flaw"], { title: string; text: string; tone: string }> = {
+  impulsive_play: {
+    title: "Juegas demasiado rápido cuando más importa",
+    text: "Tus blunders llegan con tiempo de sobra en el reloj. No es falta de tiempo: es falta de una pausa antes de mover.",
+    tone: "border-rose-500/30 from-rose-500/10 text-rose-100",
+  },
+  time_trouble_panic: {
+    title: "El reloj te gana las partidas",
+    text: "Tus errores graves se concentran con pocos segundos. Gasta menos en la apertura para llegar con reserva al final.",
+    tone: "border-amber-500/30 from-amber-500/10 text-amber-100",
+  },
+  none: {
+    title: "Gestionas bien el reloj",
+    text: "No hay un patrón claro de impulsividad ni de apuro de tiempo. Tus errores vienen de la posición, no del reloj.",
+    tone: "border-emerald-500/30 from-emerald-500/10 text-emerald-100",
+  },
+};
 
-export const ClockVsErrorChart: React.FC<ClockVsErrorChartProps> = ({ clockData }) => {
+export const ClockVsErrorChart: React.FC<{ clockData: ClockPsychology }> = ({ clockData }) => {
+  const verdict = VERDICT[clockData.primary_flaw] ?? VERDICT.none;
+  const good = clockData.avg_time_on_good_moves_seconds;
+  const bad = clockData.avg_time_on_blunders_seconds;
+  const max = Math.max(good, bad, 1);
+
   return (
-    <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl">
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-700">
-        <Clock className="w-5 h-5 text-indigo-400" />
-        <h3 className="text-base font-bold text-white">Psicología del Reloj vs. Calidad de Jugada</h3>
-      </div>
+    <Card className="p-5 sm:p-7">
+      <SectionHeader
+        icon={Clock}
+        eyebrow="Psicología del reloj"
+        title="Cuánto piensas antes de fallar"
+        subtitle="Cruzamos el tiempo que gastaste en cada jugada con la gravedad del error."
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        {/* Metric 1 */}
-        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-            <span>Blunders Impulsivos (&le;3s)</span>
-            <Zap className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-2xl font-bold text-rose-400">
-            {clockData.blunders_under_3s_with_ample_time}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Con abundancia de tiempo en el reloj</p>
-        </div>
-
-        {/* Metric 2 */}
-        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-            <span>Blunders en Apuro (&lt;10s)</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-2xl font-bold text-amber-400">
-            {clockData.blunders_in_time_trouble_under_10s}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Bajo presión extrema de tiempo</p>
-        </div>
-
-        {/* Metric 3 */}
-        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-            <span>Ratio Tiempo Blunder / Bueno</span>
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-2xl font-bold text-cyan-400">
-            {clockData.blunder_time_ratio}x
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {clockData.avg_time_on_blunders_seconds}s en blunders vs {clockData.avg_time_on_good_moves_seconds}s en buenas
-          </p>
+      <div className={cn("mt-6 flex gap-3 rounded-2xl border bg-gradient-to-r to-transparent p-4", verdict.tone)}>
+        <Brain className="mt-0.5 h-5 w-5 shrink-0 opacity-80" aria-hidden />
+        <div>
+          <div className="font-display text-lg font-semibold">{verdict.title}</div>
+          <p className="mt-0.5 text-sm opacity-80">{verdict.text}</p>
         </div>
       </div>
 
-      {/* Visual comparison bar */}
-      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-700/50">
-        <div className="text-xs font-semibold text-slate-300 mb-2">Comparativa de Tiempo Medio Invertido:</div>
-        <div className="space-y-3">
-          <div>
-            <div className="flex justify-between text-xs text-slate-400 mb-1">
-              <span>Jugadas Buenas / Acertadas</span>
-              <span className="font-mono text-emerald-400">{clockData.avg_time_on_good_moves_seconds}s</span>
-            </div>
-            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full"
-                style={{ width: `${Math.min(100, (clockData.avg_time_on_good_moves_seconds / 30) * 100)}%` }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-xs text-slate-400 mb-1">
-              <span>Jugadas donde Cometiste Error / Blunder</span>
-              <span className="font-mono text-rose-400">{clockData.avg_time_on_blunders_seconds}s</span>
-            </div>
-            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-rose-500 rounded-full"
-                style={{ width: `${Math.min(100, (clockData.avg_time_on_blunders_seconds / 30) * 100)}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatTile
+          compact
+          label="Blunders impulsivos (≤ 3 s)"
+          value={clockData.blunders_under_3s_with_ample_time}
+          icon={Zap}
+          tone="rose"
+          hint="Con tiempo de sobra en el reloj"
+        />
+        <StatTile
+          compact
+          label="Blunders en apuro (< 10 s)"
+          value={clockData.blunders_in_time_trouble_under_10s}
+          icon={AlertTriangle}
+          tone="amber"
+          hint="Bajo presión extrema"
+        />
+        <StatTile
+          compact
+          label="Tiempo en blunder vs. buena"
+          value={clockData.blunder_time_ratio}
+          decimals={2}
+          suffix="×"
+          icon={Scale}
+          tone="cyan"
+          hint={clockData.blunder_time_ratio < 1 ? "Piensas menos justo cuando fallas" : "Piensas más cuando fallas"}
+        />
       </div>
-    </div>
+
+      <div className="mt-5 space-y-4 rounded-2xl border border-ink-600/60 bg-ink-900/60 p-4 sm:p-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-ivory-faint">Tiempo medio por jugada</div>
+        <TimeBar label="Jugadas buenas" seconds={good} max={max} color="bg-emerald-400" />
+        <TimeBar label="Jugadas con blunder" seconds={bad} max={max} color="bg-rose-400" />
+      </div>
+    </Card>
   );
 };
 
+function TimeBar({ label, seconds, max, color }: { label: string; seconds: number; max: number; color: string }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex justify-between text-sm">
+        <span className="text-ivory-muted">{label}</span>
+        <span className="num font-semibold text-ivory">{seconds}s</span>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-ink-750">
+        <div
+          className={cn("h-full origin-left animate-[grow_0.9s_cubic-bezier(0.2,0.7,0.2,1)_both] rounded-full", color)}
+          style={{ width: `${(seconds / max) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}

@@ -70,6 +70,10 @@ const config: Config = {
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
+        grow: {
+          from: { transform: "scaleX(0)" },
+          to: { transform: "scaleX(1)" },
+        },
         confetti: {
           "0%": { transform: "translate(0, 0) rotate(0deg)", opacity: "1" },
           "100%": { transform: "translate(var(--dx), var(--dy)) rotate(var(--rot))", opacity: "0" },

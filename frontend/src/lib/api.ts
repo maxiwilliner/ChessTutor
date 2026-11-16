@@ -1,4 +1,5 @@
 import {
+  PlayerProfile,
   PlayerDiagnosisSummary,
   BlunderBankItem,
   TutorPedagogicalReport,
@@ -11,7 +12,7 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export async function getProfile(username: string) {
+export async function getProfile(username: string): Promise<PlayerProfile> {
   const res = await fetch(`${API_BASE}/chesscom/profile/${username}`);
   if (!res.ok) throw new Error(`Usuario '${username}' no encontrado`);
   return res.json();

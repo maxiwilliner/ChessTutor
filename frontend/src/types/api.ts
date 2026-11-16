@@ -1,3 +1,14 @@
+export interface PlayerProfile {
+  username: string;
+  title?: string | null;
+  status?: string | null;
+  avatar?: string | null;
+  /** URL de la API de Chess.com, p. ej. https://api.chess.com/pub/country/AR */
+  country?: string | null;
+  joined?: number | null;
+  url?: string | null;
+}
+
 export interface PlayerMeta {
   username: string;
   elo_current: number;
