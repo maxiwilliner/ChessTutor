@@ -1,7 +1,10 @@
+import asyncio
 import json
-from typing import List, Optional, Sequence
+from datetime import datetime
+from typing import Dict, List, Optional, Sequence
 import chess
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.config import settings
@@ -39,62 +42,63 @@ def get_player_eval(eval_score_cp: Optional[int], turn_is_white: bool) -> float:
     return float(eval_score_cp if turn_is_white else -eval_score_cp)
 
 
-async def get_or_evaluate_fen(
-    fen: str,
-    depth: int,
-    time_limit: Optional[float] = None,
-    db_session: Optional[AsyncSession] = None
-) -> PositionEvaluation:
-    """
-    Checks DB cache for the FEN at given depth. If missing, computes with Stockfish.
-    """
-    if db_session:
-        stmt = (
-            select(PositionEvalCache)
-            .where(PositionEvalCache.fen == fen, PositionEvalCache.depth >= depth)
-            .order_by(PositionEvalCache.depth.desc())
-            .limit(1)
+CACHE_QUERY_CHUNK = 400  # stays well below SQLite's bound-parameter limit
+
+
+def _from_cache(fen: str, row: PositionEvalCache) -> PositionEvaluation:
+    pv_list = json.loads(row.pv_uci_json) if row.pv_uci_json else []
+    # The cache only stores UCI: rebuild SAN from the position.
+    best_san, pv_san = uci_line_to_san(fen, pv_list)
+    return PositionEvaluation(
+        fen=fen,
+        depth=row.depth,
+        score_cp=row.score_cp,
+        mate_in=row.mate_in,
+        best_move_uci=row.best_move_uci,
+        best_move_san=best_san,
+        pv_uci=pv_list,
+        pv_san=pv_san,
+    )
+
+
+async def _load_cached(
+    fens: List[str], depth: int, db_session: AsyncSession
+) -> Dict[str, PositionEvaluation]:
+    """Deepest cached evaluation (>= depth) for each FEN, fetched in a few batched queries."""
+    found: Dict[str, PositionEvalCache] = {}
+    for i in range(0, len(fens), CACHE_QUERY_CHUNK):
+        chunk = fens[i:i + CACHE_QUERY_CHUNK]
+        rows = (await db_session.execute(
+            select(PositionEvalCache).where(PositionEvalCache.fen.in_(chunk), PositionEvalCache.depth >= depth)
+        )).scalars().all()
+        for row in rows:
+            if row.fen not in found or row.depth > found[row.fen].depth:
+                found[row.fen] = row
+    return {fen: _from_cache(fen, row) for fen, row in found.items()}
+
+
+async def _store_cached(evaluations: List[PositionEvaluation], db_session: AsyncSession) -> None:
+    if not evaluations:
+        return
+    rows = [
+        dict(
+            fen=e.fen,
+            depth=e.depth,
+            score_cp=e.score_cp,
+            mate_in=e.mate_in,
+            best_move_uci=e.best_move_uci,
+            pv_uci_json=json.dumps(e.pv_uci) if e.pv_uci else None,
+            created_at=datetime.utcnow(),
         )
-        cached = (await db_session.execute(stmt)).scalars().first()
-        if cached:
-            pv_list = json.loads(cached.pv_uci_json) if cached.pv_uci_json else []
-            # La caché solo guarda UCI: reconstruir la notación SAN desde la posición.
-            best_san, pv_san = uci_line_to_san(fen, pv_list)
-            return PositionEvaluation(
-                fen=fen,
-                depth=cached.depth,
-                score_cp=cached.score_cp,
-                mate_in=cached.mate_in,
-                best_move_uci=cached.best_move_uci,
-                best_move_san=best_san,
-                pv_uci=pv_list,
-                pv_san=pv_san,
-            )
-
-    evaluation = await stockfish_pool.evaluate_position(fen=fen, depth=depth, time_limit=time_limit)
-
-    if db_session:
-        try:
-            check_stmt = select(PositionEvalCache.id).where(
-                PositionEvalCache.fen == fen, PositionEvalCache.depth == depth
-            ).limit(1)
-            existing = await db_session.execute(check_stmt)
-            if not existing.scalar_one_or_none():
-                db_session.add(
-                    PositionEvalCache(
-                        fen=fen,
-                        depth=depth,
-                        score_cp=evaluation.score_cp,
-                        mate_in=evaluation.mate_in,
-                        best_move_uci=evaluation.best_move_uci,
-                        pv_uci_json=json.dumps(evaluation.pv_uci) if evaluation.pv_uci else None,
-                    )
-                )
-                await db_session.commit()
-        except Exception:
-            await db_session.rollback()
-
-    return evaluation
+        for e in evaluations
+    ]
+    try:
+        await db_session.execute(
+            sqlite_insert(PositionEvalCache).on_conflict_do_nothing(index_elements=["fen", "depth"]), rows
+        )
+        await db_session.commit()
+    except Exception:
+        await db_session.rollback()
 
 
 async def evaluate_many(
@@ -103,8 +107,33 @@ async def evaluate_many(
     time_limit: Optional[float],
     db_session: Optional[AsyncSession] = None,
 ) -> List[PositionEvaluation]:
-    """Evaluates a list of positions, preserving order."""
-    return [await get_or_evaluate_fen(fen, depth, time_limit, db_session) for fen in fens]
+    """
+    Evaluates positions preserving order. Cached positions are read in batch; the rest are sent
+    to Stockfish concurrently (the pool caps parallelism at STOCKFISH_CONCURRENCY workers) and
+    written back to the cache in one statement. The AsyncSession is only used sequentially.
+    """
+    unique = list(dict.fromkeys(fens))
+    results: Dict[str, PositionEvaluation] = await _load_cached(unique, depth, db_session) if db_session else {}
+
+    missing = [fen for fen in unique if fen not in results]
+    fresh = await asyncio.gather(
+        *(stockfish_pool.evaluate_position(fen=fen, depth=depth, time_limit=time_limit) for fen in missing)
+    )
+    results.update(zip(missing, fresh))
+    if db_session:
+        await _store_cached(list(fresh), db_session)
+
+    return [results[fen] for fen in fens]
+
+
+async def get_or_evaluate_fen(
+    fen: str,
+    depth: int,
+    time_limit: Optional[float] = None,
+    db_session: Optional[AsyncSession] = None
+) -> PositionEvaluation:
+    """Single-position convenience wrapper around `evaluate_many`."""
+    return (await evaluate_many([fen], depth, time_limit, db_session))[0]
 
 
 async def evaluate_game_smart(

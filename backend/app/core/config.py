@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from pathlib import Path
+import os
 import shutil
 
 
@@ -22,7 +23,8 @@ class Settings(BaseSettings):
 
     # Stockfish Settings
     STOCKFISH_PATH: Path = Path(__file__).resolve().parent.parent.parent / "bin" / "stockfish"
-    STOCKFISH_CONCURRENCY: int = 2
+    # Parallel Stockfish processes (1 thread each). Default: half of the CPU cores, between 2 and 6.
+    STOCKFISH_CONCURRENCY: int = max(2, min(6, (os.cpu_count() or 4) // 2))
     STOCKFISH_DEPTH_FAST: int = 11
     STOCKFISH_DEPTH_DEEP: int = 15
     STOCKFISH_TIME_LIMIT_FAST: float = 0.04
