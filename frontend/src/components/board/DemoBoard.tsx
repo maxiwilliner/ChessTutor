@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Key } from "chessground/types";
 import { DrawShape } from "chessground/draw";
@@ -32,17 +32,35 @@ export function DemoBoard({ className }: { className?: string }) {
 
   // -1 = posición inicial
   const [step, setStep] = useState(-1);
+  const figureRef = useRef<HTMLElement>(null);
+  // Solo se anima si la pestaña está visible y el tablero en pantalla (ahorra CPU y batería)
+  const [onScreen, setOnScreen] = useState(true);
+  const [tabVisible, setTabVisible] = useState(true);
+
+  useEffect(() => {
+    const onVisibility = () => setTabVisible(document.visibilityState === "visible");
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    const el = figureRef.current;
+    const io = el && typeof IntersectionObserver !== "undefined" ? new IntersectionObserver(([e]) => setOnScreen(e.isIntersecting)) : null;
+    if (el) io?.observe(el);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      io?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
       setStep(frames.length - 1);
       return;
     }
+    if (!onScreen || !tabVisible) return;
     const id = window.setInterval(() => {
       setStep((s) => (s >= frames.length - 1 + PAUSE_STEPS ? -1 : s + 1));
     }, STEP_MS);
     return () => window.clearInterval(id);
-  }, [frames.length]);
+  }, [frames.length, onScreen, tabVisible]);
 
   const visible = Math.min(step, frames.length - 1);
   const frame = visible >= 0 ? frames[visible] : null;
@@ -56,7 +74,7 @@ export function DemoBoard({ className }: { className?: string }) {
   const isMate = visible === frames.length - 1;
 
   return (
-    <figure className={cn("relative", className)}>
+    <figure ref={figureRef} className={cn("relative", className)}>
       <div className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-brass-400/10 blur-2xl" aria-hidden />
       <div className="relative">
         <ChessgroundBoard fen={fen} viewOnly shapes={shapes} lastMove={lastMove} showCoordinates={false}>

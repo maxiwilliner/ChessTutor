@@ -39,7 +39,8 @@ export async function evaluateMany(
   fens: string[],
   limits: EvalLimits,
   engine: Engine,
-  cache?: EvalCache
+  cache?: EvalCache,
+  signal?: AbortSignal
 ): Promise<PositionEvaluation[]> {
   const unique = Array.from(new Set(fens));
   const results = new Map<string, PositionEvaluation>();
@@ -51,7 +52,7 @@ export async function evaluateMany(
     });
   }
   const missing = unique.filter((f) => !results.has(f));
-  const fresh = await Promise.all(missing.map((f) => engine.evaluate(f, limits)));
+  const fresh = await Promise.all(missing.map((f) => engine.evaluate(f, limits, signal)));
   missing.forEach((f, i) => results.set(f, fresh[i]));
   if (cache && fresh.length) {
     await cache.setMany(fresh.filter((e) => e.depth !== 99).map((e) => [cacheKey(e.fen, limits.depth), e]));
@@ -65,14 +66,15 @@ export async function evaluateGameSmart(
   game: NormalizedGame,
   engine: Engine,
   depth: AnalysisDepth = DEFAULT_DEPTH,
-  cache?: EvalCache
+  cache?: EvalCache,
+  signal?: AbortSignal
 ): Promise<EvaluatedMove[]> {
   if (!game.moves.length) return [];
   const userIsWhite = game.user_color === "white";
   const pe = (ev: PositionEvaluation) => getPlayerEval(ev.score_cp, userIsWhite);
 
   // Pasada 1
-  const fast = await evaluateMany([game.moves[0].fen_before, ...game.moves.map((m) => m.fen_after)], depth.fast, engine, cache);
+  const fast = await evaluateMany([game.moves[0].fen_before, ...game.moves.map((m) => m.fen_after)], depth.fast, engine, cache, signal);
 
   const userIdx = game.moves.flatMap((m, i) => (m.turn === game.user_color ? [i] : []));
   const candidates = userIdx.filter((i) => isMistake(classifyMove(pe(fast[i]), pe(fast[i + 1]))));
@@ -82,7 +84,8 @@ export async function evaluateGameSmart(
     candidates.flatMap((i) => [game.moves[i].fen_before, game.moves[i].fen_after]),
     depth.deep,
     engine,
-    cache
+    cache,
+    signal
   );
   const deep = new Map(candidates.map((i, k) => [i, [deepList[2 * k], deepList[2 * k + 1]] as const]));
 

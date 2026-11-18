@@ -20,22 +20,41 @@ export class ChessComError extends Error {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** GET con reintentos ante 429/5xx. Devuelve null si el recurso no existe (404). */
+/** Espera inyectable para los tests. */
+export const retryTiming = { sleep, baseDelayMs: 1000 };
+
+/**
+ * GET con reintentos. Devuelve null si el recurso no existe (404).
+ * Se reintenta ante 429/5xx y también ante errores de red: cuando la protección anti-bots de Chess.com
+ * responde sin cabeceras CORS, el navegador no ve el código y `fetch` lanza un TypeError.
+ */
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T | null> {
+  const wait = (attempt: number, retryAfterSec = 0) =>
+    retryTiming.sleep(Math.min(retryAfterSec > 0 ? retryAfterSec * 1000 : 2 ** attempt * retryTiming.baseDelayMs, 10_000));
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
       res = await fetch(url, { signal, headers: { Accept: "application/json" } });
     } catch (e) {
       if ((e as Error).name === "AbortError") throw e;
-      throw new ChessComError("No se pudo contactar con Chess.com. Revisa tu conexión a internet.", "network");
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      if (!offline && attempt < MAX_RETRIES) {
+        await wait(attempt);
+        continue;
+      }
+      throw new ChessComError(
+        offline
+          ? "Parece que no tienes conexión a internet. Conéctate y vuelve a intentarlo."
+          : "No se pudo contactar con Chess.com. Inténtalo de nuevo en un minuto.",
+        "network"
+      );
     }
     if (res.status === 404) return null;
     if (res.ok) return (await res.json()) as T;
     const retryable = res.status === 429 || res.status >= 500;
     if (retryable && attempt < MAX_RETRIES) {
       const retryAfter = Number(res.headers.get("Retry-After"));
-      await sleep(Math.min(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2 ** attempt * 1000, 10_000));
+      await wait(attempt, Number.isFinite(retryAfter) ? retryAfter : 0);
       continue;
     }
     if (res.status === 429) {
@@ -69,32 +88,54 @@ export async function getProfile(username: string, signal?: AbortSignal): Promis
 interface RawGame {
   pgn?: string;
   time_class?: string;
+  rules?: string;
   end_time?: number;
 }
 
-/** Últimas `limit` partidas del ritmo pedido, de la más reciente a la más antigua. */
+/** Meses que se piden a la vez y tope de meses hacia atrás. */
+export const MONTHS_PER_BATCH = 3;
+export const MAX_MONTHS = 36;
+
+const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+/** ".../games/2025/10" -> "oct 2025" */
+export function archiveLabel(url: string): string {
+  const [y, m] = url.split("/").slice(-2).map(Number);
+  return m >= 1 && m <= 12 ? `${MONTHS_ES[m - 1]} ${y}` : url;
+}
+
+/**
+ * Últimas `limit` partidas estándar del ritmo pedido, de la más reciente a la más antigua.
+ * Los meses se piden en lotes de MONTHS_PER_BATCH en paralelo (en orden) y como máximo MAX_MONTHS hacia atrás.
+ */
 export async function getRecentGames(
   username: string,
   timeClass: string,
   limit: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onMonth?: (label: string) => void
 ): Promise<NormalizedGame[]> {
   checkUsername(username);
   const user = username.toLowerCase();
   const index = await getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal);
   if (!index) throw new ChessComError(`No existe el usuario «${username}» en Chess.com. Revisa cómo se escribe.`, "not_found");
-  const archives = index.archives ?? [];
+  const months = [...(index.archives ?? [])].reverse().slice(0, MAX_MONTHS);
   const games: NormalizedGame[] = [];
-  for (const url of [...archives].reverse()) {
-    const raw = (await getJson<{ games: RawGame[] }>(url, signal))?.games ?? [];
-    for (const g of [...raw].reverse()) {
-      if (timeClass && g.time_class !== timeClass) continue;
-      if (!g.pgn) continue;
-      const game = parseGamePgn(g.pgn, username);
-      if (!game) continue;
-      if (typeof g.end_time === "number") game.end_time = g.end_time;
-      games.push(game);
-      if (games.length >= limit) return games;
+  for (let i = 0; i < months.length; i += MONTHS_PER_BATCH) {
+    const batch = months.slice(i, i + MONTHS_PER_BATCH);
+    onMonth?.(archiveLabel(batch[batch.length - 1]));
+    const results = await Promise.all(batch.map((url) => getJson<{ games: RawGame[] }>(url, signal)));
+    for (const month of results) {
+      for (const g of [...(month?.games ?? [])].reverse()) {
+        if (timeClass && g.time_class !== timeClass) continue;
+        // Solo ajedrez estándar: Chess960 y otras variantes comparten ritmo pero no aperturas
+        if (g.rules && g.rules !== "chess") continue;
+        if (!g.pgn) continue;
+        const game = parseGamePgn(g.pgn, username);
+        if (!game) continue;
+        if (typeof g.end_time === "number") game.end_time = g.end_time;
+        games.push(game);
+        if (games.length >= limit) return games;
+      }
     }
   }
   return games;

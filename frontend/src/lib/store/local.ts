@@ -7,7 +7,6 @@
  */
 import type { BlunderBankItem } from "@/types/api";
 import type { EvalCache } from "@/analysis/evaluator";
-import { runAnalysis } from "@/analysis/pipeline";
 import { getProfile } from "@/analysis/chesscom";
 import { getBrowserEngine } from "@/analysis/engine/browser";
 import { adaptiveDepth } from "@/analysis/device";
@@ -45,6 +44,8 @@ export const localStore: DataStore = {
   mode: "demo",
 
   async analyze({ username, timeClass, limit, onProgress, signal }) {
+    // Import diferido: el pipeline (heurísticas, agregador, tutor) solo se descarga al analizar
+    const { runAnalysis } = await import("@/analysis/pipeline");
     const result = await runAnalysis({
       username,
       timeClass,
@@ -108,7 +109,8 @@ export const localStore: DataStore = {
     return response;
   },
 
-  evaluateMove: (puzzle, playedUci) => evaluateAlternativeMove(puzzle, playedUci, getBrowserEngine()),
+  // Dos posiciones por jugada (la jugada y la mejor): con 2 motores basta
+  evaluateMove: (puzzle, playedUci) => evaluateAlternativeMove(puzzle, playedUci, getBrowserEngine(2)),
 };
 
 /** ¿Se guardan los datos entre visitas? (false si el navegador no permite IndexedDB). */

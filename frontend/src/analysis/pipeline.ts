@@ -46,9 +46,11 @@ export async function runAnalysis(opts: {
   };
 
   emit({ stage: "fetching_games", message: `Descargando partidas recientes de ${username}...`, progress_pct: 5 });
-  const games = await getRecentGames(username, timeClass, limit, signal);
+  const games = await getRecentGames(username, timeClass, limit, signal, (month) =>
+    emit({ stage: "fetching_games", message: `Buscando partidas de ${username} en ${month}...`, progress_pct: 5 })
+  );
   if (!games.length) {
-    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} en Chess.com. Prueba con otro ritmo.`);
+    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} en Chess.com en los últimos 3 años. Prueba con otro ritmo.`);
   }
 
   const total = games.length;
@@ -65,7 +67,7 @@ export async function runAnalysis(opts: {
       current_game: i + 1,
       total_games: total,
     });
-    evaluated.push(await evaluateGameSmart(g, engine, depth, cache));
+    evaluated.push(await evaluateGameSmart(g, engine, depth, cache, signal));
   }
 
   checkAbort();

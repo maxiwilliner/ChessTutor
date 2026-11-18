@@ -49,3 +49,25 @@ describe("EnginePool no se cuelga", () => {
     for (const j of jobs) await expect(j).rejects.toBeInstanceOf(EngineError);
   });
 });
+
+describe("EnginePool: cancelación e inactividad", () => {
+  it("al abortar se descartan los trabajos en cola", async () => {
+    const pool = new EnginePool(fakeProcess("ok"), 1, fast);
+    const ctrl = new AbortController();
+    const jobs = Array.from({ length: 5 }, () => pool.evaluate(FEN, { depth: 5 }, ctrl.signal));
+    ctrl.abort();
+    const results = await Promise.allSettled(jobs);
+    const rejected = results.filter((r) => r.status === "rejected" && (r.reason as Error).name === "AbortError");
+    expect(rejected.length).toBeGreaterThanOrEqual(4); // el que ya estaba en el motor puede terminar
+    expect(pool.pending).toBe(0);
+  });
+
+  it("avisa cuando se queda sin trabajo", async () => {
+    const pool = new EnginePool(fakeProcess("ok"), 2, fast);
+    let idle = 0;
+    pool.onIdle = () => idle++;
+    await Promise.all([pool.evaluate(FEN, { depth: 5 }), pool.evaluate(FEN, { depth: 5 }), pool.evaluate(FEN, { depth: 5 })]);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(idle).toBeGreaterThanOrEqual(1);
+  });
+});

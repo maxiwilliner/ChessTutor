@@ -24,7 +24,8 @@ export interface EvalLimits {
 }
 
 export interface Engine {
-  evaluate(fen: string, limits: EvalLimits): Promise<PositionEvaluation>;
+  /** Con `signal`, al abortar se descarta el trabajo si aún estaba en cola. */
+  evaluate(fen: string, limits: EvalLimits, signal?: AbortSignal): Promise<PositionEvaluation>;
   readonly size: number;
   dispose(): void;
 }
@@ -44,6 +45,8 @@ interface Job {
   resolve: (ev: PositionEvaluation) => void;
   reject: (err: Error) => void;
 }
+
+const abortError = () => new DOMException("Análisis cancelado", "AbortError");
 
 class Slot {
   private waiting: { done: (l: string) => boolean; onOther?: (l: string) => void; resolve: () => void; reject: (e: Error) => void } | null =
@@ -127,6 +130,9 @@ export class EnginePool implements Engine {
   private slots: Slot[];
   private idle: Slot[];
   private queue: Job[] = [];
+  private busy = 0;
+  /** Se llama cada vez que el pool se queda sin trabajo (cola vacía y ningún motor ocupado). */
+  onIdle?: () => void;
 
   constructor(
     factory: () => UciProcess,
@@ -158,27 +164,54 @@ export class EnginePool implements Engine {
     return this.slots.some((s) => !s.dead);
   }
 
-  evaluate(fen: string, limits: EvalLimits): Promise<PositionEvaluation> {
+  evaluate(fen: string, limits: EvalLimits, signal?: AbortSignal): Promise<PositionEvaluation> {
     const terminal = terminalEvaluation(fen);
     if (terminal) return Promise.resolve(terminal);
     if (!this.alive) return Promise.reject(this.slots[0].dead ?? new EngineError(START_FAILED));
+    if (signal?.aborted) return Promise.reject(abortError());
     return new Promise((resolve, reject) => {
-      this.queue.push({ fen, limits, resolve, reject });
+      const job: Job = { fen, limits, resolve, reject };
+      this.queue.push(job);
+      signal?.addEventListener(
+        "abort",
+        () => {
+          // Si sigue en cola, se descarta; si ya está en un motor, termina (es una sola posición).
+          const i = this.queue.indexOf(job);
+          if (i >= 0) {
+            this.queue.splice(i, 1);
+            reject(abortError());
+            this.checkIdle();
+          }
+        },
+        { once: true }
+      );
       this.pump();
     });
+  }
+
+  /** Trabajos en cola (para tests y diagnóstico). */
+  get pending() {
+    return this.queue.length;
+  }
+
+  private checkIdle() {
+    if (this.busy === 0 && this.queue.length === 0) this.onIdle?.();
   }
 
   private pump() {
     while (this.idle.length && this.queue.length) {
       const slot = this.idle.pop()!;
       const job = this.queue.shift()!;
+      this.busy++;
       slot
         .run(job.fen, job.limits, this.timeouts.move)
         .then(job.resolve, (e) => job.reject(e instanceof Error ? e : new Error(String(e))))
         .finally(() => {
+          this.busy--;
           if (!slot.dead) this.idle.push(slot);
           if (!this.alive) this.failAll();
           else this.pump();
+          this.checkIdle();
         });
     }
   }

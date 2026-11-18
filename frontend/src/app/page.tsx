@@ -166,6 +166,10 @@ export default function HomePage() {
                     spellCheck={false}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    onFocus={() => {
+                      // Demo: arranca los motores mientras se escribe (la descarga del WASM se solapa)
+                      if (APP_MODE === "demo") void import("@/analysis/engine/browser").then((m) => m.prewarmBrowserEngine());
+                    }}
                     disabled={isAnalyzing}
                     placeholder="hikaru, magnuscarlsen o el tuyo"
                     className="h-14 w-full rounded-xl border border-ink-500 bg-ink-900 pl-12 pr-4 text-base font-medium text-ivory placeholder:text-ivory-faint focus:border-brass-400 focus:outline-none focus:ring-2 focus:ring-brass-400/20 disabled:opacity-60"

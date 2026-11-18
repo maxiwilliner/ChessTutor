@@ -87,3 +87,16 @@ async def test_tutor_report_is_generated_once_per_analysis():
         analysis_module._LATEST_ANALYSIS.pop("cacheuser", None)
     assert first.status_code == second.status_code == 200
     assert fake.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_recent_games_skip_variants(monkeypatch):
+    client = ChessComClient()
+    pgn = '[White "me"]\n[Black "you"]\n[Result "1-0"]\n[TimeControl "600"]\n\n1. e4 e5 1-0'
+    monkeypatch.setattr(client, "get_monthly_archives", AsyncMock(return_value=["https://x/games/2026/10"]))
+    monkeypatch.setattr(client, "get_monthly_games", AsyncMock(return_value=[
+        {"time_class": "rapid", "rules": "chess", "pgn": pgn, "end_time": 1},
+        {"time_class": "rapid", "rules": "chess960", "pgn": pgn, "end_time": 2},
+    ]))
+    games = await client.get_recent_games("me", "rapid", 10)
+    assert len(games) == 1

@@ -185,6 +185,9 @@ class ChessComClient:
                 # Filter by time_class if provided
                 if time_class and raw_game.get("time_class") != time_class:
                     continue
+                # Solo ajedrez estándar: Chess960 y otras variantes comparten ritmo pero no aperturas
+                if raw_game.get("rules", "chess") != "chess":
+                    continue
 
                 pgn_text = raw_game.get("pgn")
                 if not pgn_text:
