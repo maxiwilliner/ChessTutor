@@ -6,6 +6,12 @@ import { KnightMark } from "@/components/layout/KnightMark";
 import { MobileTabBar, NavLinks } from "@/components/layout/NavLinks";
 import { DemoBanner, DemoFooterControls } from "@/components/layout/DemoNotice";
 import { APP_MODE } from "@/lib/mode";
+import { CF_ANALYTICS_TOKEN, SITE_URL } from "@/lib/site";
+import { FeedbackLink } from "@/components/layout/FeedbackLink";
+import Script from "next/script";
+
+const TAGLINE =
+  "Analiza tus partidas de Chess.com con Stockfish, descubre las 3 fugas que más Elo te cuestan y entrena las posiciones exactas donde fallaste.";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["opsz"] });
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -16,8 +22,17 @@ export const metadata: Metadata = {
     default: "ChessTutor · Tu profesor personal de ajedrez",
     template: "%s · ChessTutor",
   },
-  description:
-    "Analiza tus partidas de Chess.com con Stockfish, descubre las 3 fugas que más Elo te cuestan y entrena las posiciones exactas donde fallaste.",
+  description: TAGLINE,
+  metadataBase: new URL(SITE_URL),
+  applicationName: "ChessTutor",
+  openGraph: {
+    type: "website",
+    locale: "es_ES",
+    siteName: "ChessTutor",
+    title: "ChessTutor · Deja de repetir los mismos errores",
+    description: TAGLINE,
+  },
+  twitter: { card: "summary_large_image", title: "ChessTutor · Deja de repetir los mismos errores", description: TAGLINE },
 };
 
 export const viewport: Viewport = {
@@ -65,12 +80,25 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           }
         >
           <div className="mx-auto max-w-7xl px-4">
-            ChessTutor · Análisis con Stockfish · Datos públicos de Chess.com
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              <span>ChessTutor · Análisis con Stockfish · Datos públicos de Chess.com · No afiliado a Chess.com</span>
+              <Link href="/privacidad" className="hover:text-brass-300">
+                Privacidad
+              </Link>
+              <FeedbackLink className="text-xs" />
+            </div>
             {APP_MODE === "demo" && <DemoFooterControls />}
           </div>
         </footer>
 
         <MobileTabBar />
+        {CF_ANALYTICS_TOKEN && (
+          <Script
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            strategy="afterInteractive"
+            data-cf-beacon={JSON.stringify({ token: CF_ANALYTICS_TOKEN })}
+          />
+        )}
       </body>
     </html>
   );

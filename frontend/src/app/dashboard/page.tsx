@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { store } from "@/lib/store";
+import { FeedbackLink } from "@/components/layout/FeedbackLink";
 import { PlayerDiagnosisSummary, PlayerProfile, TutorPedagogicalReport } from "@/types/api";
 import { DiagnosisCard } from "@/components/tutor/DiagnosisCard";
 import { StudyPlanCard } from "@/components/tutor/StudyPlanCard";
@@ -250,6 +251,7 @@ function DashboardContent() {
         <Link href={trainerHref} className={buttonClasses("primary", "lg")}>
           Ir al entrenador <ArrowRight className="h-4 w-4" aria-hidden />
         </Link>
+        <FeedbackLink label="¿Te ha sido útil? Cuéntanos qué mejorarías" className="text-sm" />
       </Card>
     </div>
   );
