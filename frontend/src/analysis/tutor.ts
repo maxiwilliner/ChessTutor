@@ -2,6 +2,8 @@
 import type { DailyPlanItem, PlayerDiagnosisSummary, TutorLeak, TutorPedagogicalReport } from "@/types/api";
 import { pyFixed0, pyFloat } from "./format";
 
+const TIME_CLASS_ES: Record<string, string> = { rapid: "rápido", blitz: "blitz", bullet: "bullet", daily: "diario" };
+
 const FALLBACK_LEAK_TITLES: Record<string, string> = {
   MIDDLEGAME_COLLAPSE: "Derrumbe en el medio juego",
   GENERAL_TACTICAL_CALCULATION: "Precisión táctica general",
@@ -22,7 +24,8 @@ export function generateDeterministicTutorReport(summary: PlayerDiagnosisSummary
   const m = summary.overall_metrics;
   const clk = summary.clock_psychology;
 
-  const greeting = `¡Hola ${p.username}! He analizado tus ${p.games_analyzed} partidas recientes en ritmo ${p.time_class} (Rating actual: ${p.elo_current}).`;
+  const pace = TIME_CLASS_ES[p.time_class] ?? p.time_class;
+  const greeting = `¡Hola ${p.username}! He analizado tus ${p.games_analyzed} partidas recientes en ritmo ${pace} (Rating actual: ${p.elo_current}).`;
   const overview =
     `Tu tasa de victorias es del ${pyFixed0(m.win_rate * 100)}% con una puntuación de precisión del ${pyFloat(m.accuracy_score)}/100 ` +
     `y una pérdida media de ${pyFloat(m.avg_centipawn_loss)} centipeones por jugada. Tu juego tiene una base sólida, ` +

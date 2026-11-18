@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     template: "%s · ChessTutor",
   },
   description:
-    "Diagnóstico pedagógico con Stockfish 16, detección de patrones psicológicos y entrenamiento interactivo de tus propios errores.",
+    "Analiza tus partidas de Chess.com con Stockfish, descubre las 3 fugas que más Elo te cuestan y entrena las posiciones exactas donde fallaste.",
 };
 
 export const viewport: Viewport = {

@@ -27,6 +27,8 @@ export interface AnalysisResult {
 
 export class AnalysisError extends Error {}
 
+const PACE_ES: Record<string, string> = { rapid: "rápidas", blitz: "de blitz", bullet: "de bullet", daily: "diarias" };
+
 export async function runAnalysis(opts: {
   username: string;
   timeClass: string;
@@ -45,7 +47,9 @@ export async function runAnalysis(opts: {
 
   emit({ stage: "fetching_games", message: `Descargando partidas recientes de ${username}...`, progress_pct: 5 });
   const games = await getRecentGames(username, timeClass, limit, signal);
-  if (!games.length) throw new AnalysisError(`No se encontraron partidas ${timeClass} para ${username} en Chess.com.`);
+  if (!games.length) {
+    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} en Chess.com. Prueba con otro ritmo.`);
+  }
 
   const total = games.length;
   emit({ stage: "evaluating_start", message: `Analizando ${total} partidas con Stockfish...`, progress_pct: 10, total_games: total });

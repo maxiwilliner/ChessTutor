@@ -16066,7 +16066,7 @@
   }
  ],
  "report": {
-  "greeting": "¡Hola demo_player! He analizado tus 6 partidas recientes en ritmo rapid (Rating actual: 729).",
+  "greeting": "¡Hola demo_player! He analizado tus 6 partidas recientes en ritmo rápido (Rating actual: 729).",
   "overview": "Tu tasa de victorias es del 67% con una puntuación de precisión del 73.7/100 y una pérdida media de 78.5 centipeones por jugada. Tu juego tiene una base sólida, pero existen 3 patrones muy claros y recurrentes donde se está escapando la mayor parte de tu Elo.",
   "top_3_leaks": [
    {

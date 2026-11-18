@@ -11,6 +11,8 @@ from backend.app.modules.tutor.prompts import SYSTEM_PROMPT, build_user_prompt
 logger = logging.getLogger(__name__)
 
 
+TIME_CLASS_ES = {"rapid": "rápido", "blitz": "blitz", "bullet": "bullet", "daily": "diario"}
+
 FALLBACK_LEAK_TITLES = {
     "MIDDLEGAME_COLLAPSE": "Derrumbe en el medio juego",
     "GENERAL_TACTICAL_CALCULATION": "Precisión táctica general",
@@ -26,7 +28,8 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
     m = summary.overall_metrics
     clk = summary.clock_psychology
 
-    greeting = f"¡Hola {p.username}! He analizado tus {p.games_analyzed} partidas recientes en ritmo {p.time_class} (Rating actual: {p.elo_current})."
+    pace = TIME_CLASS_ES.get(p.time_class, p.time_class)
+    greeting = f"¡Hola {p.username}! He analizado tus {p.games_analyzed} partidas recientes en ritmo {pace} (Rating actual: {p.elo_current})."
     
     overview = (
         f"Tu tasa de victorias es del {m.win_rate*100:.0f}% con una puntuación de precisión del {m.accuracy_score}/100 "

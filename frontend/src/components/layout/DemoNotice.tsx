@@ -1,20 +1,40 @@
 "use client";
 
-import React, { useState } from "react";
-import { Download, Trash2, ShieldCheck } from "lucide-react";
-import { clearLocalData, exportLocalData } from "@/lib/store/local";
+import React, { useEffect, useState } from "react";
+import { Download, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { clearLocalData, exportLocalData, isStoragePersistent } from "@/lib/store/local";
 import { cn } from "@/lib/cn";
 
 /** Franja bajo la cabecera: qué es la demo y dónde viven los datos. */
 export function DemoBanner() {
+  const [persistent, setPersistent] = useState(true);
+  useEffect(() => {
+    isStoragePersistent().then(setPersistent).catch(() => setPersistent(false));
+  }, []);
+
   return (
-    <div className="border-b border-brass-500/20 bg-brass-400/[0.07]">
-      <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 text-xs text-brass-200 sm:px-6 lg:px-8">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span>
-          <strong className="font-semibold">Demo gratuita.</strong> El análisis se hace en tu navegador y tus datos se guardan solo
-          aquí: no tenemos servidor ni cuentas.
-        </span>
+    <div className={persistent ? "border-b border-brass-500/20 bg-brass-400/[0.07]" : "border-b border-amber-500/30 bg-amber-500/10"}>
+      <div
+        role={persistent ? undefined : "status"}
+        className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 text-xs text-brass-200 sm:px-6 lg:px-8"
+      >
+        {persistent ? (
+          <>
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              <strong className="font-semibold">Demo gratuita.</strong> El análisis se hace en tu navegador y tus datos se guardan solo
+              aquí: no tenemos servidor ni cuentas.
+            </span>
+          </>
+        ) : (
+          <>
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
+            <span className="text-amber-100">
+              <strong className="font-semibold">Tu navegador no permite guardar datos</strong> (¿modo privado?). Puedes usar la demo, pero
+              tu análisis y tu progreso se perderán al cerrar la pestaña.
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

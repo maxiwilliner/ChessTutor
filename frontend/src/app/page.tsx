@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { store } from "@/lib/store";
+import { APP_MODE } from "@/lib/mode";
+import { estimateSeconds, formatDuration } from "@/analysis/device";
 import { useLastUsername } from "@/lib/useLastUsername";
 import { DemoBoard } from "@/components/board/DemoBoard";
 import { Button } from "@/components/ui/Button";
@@ -44,13 +46,27 @@ interface Progress {
   total?: number;
 }
 
+const DEMO_GAME_OPTIONS = [5, 10, 20];
+const FULL_GAME_OPTIONS: [number, string][] = [
+  [10, "~15 s"],
+  [15, "~25 s"],
+  [30, "~45 s"],
+];
+/** Jugador público conocido para probar sin cuenta de Chess.com. */
+const EXAMPLE_PLAYER = { username: "hikaru", timeClass: "blitz" };
+
 export default function HomePage() {
   const router = useRouter();
   const [lastUser, saveLastUser] = useLastUsername();
 
   const [username, setUsername] = useState("");
   const [timeClass, setTimeClass] = useState("rapid");
-  const [gamesLimit, setGamesLimit] = useState(15);
+  const [gamesLimit, setGamesLimit] = useState(APP_MODE === "demo" ? 10 : 15);
+  // Demo: el tiempo depende del dispositivo (se calcula tras montar para no desajustar la hidratación)
+  const [durations, setDurations] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (APP_MODE === "demo") setDurations(Object.fromEntries(DEMO_GAME_OPTIONS.map((n) => [n, formatDuration(estimateSeconds(n))])));
+  }, []);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -64,8 +80,9 @@ export default function HomePage() {
 
   const isAnalyzing = progress !== null && !errorMessage;
 
-  const start = () => {
-    const cleanUser = username.trim();
+  const start = (override?: { username: string; timeClass: string }) => {
+    const cleanUser = (override?.username ?? username).trim();
+    const tc = override?.timeClass ?? timeClass;
     if (!cleanUser) return;
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -76,7 +93,7 @@ export default function HomePage() {
     store
       .analyze({
         username: cleanUser,
-        timeClass,
+        timeClass: tc,
         limit: gamesLimit,
         signal: controller.signal,
         onProgress: (data) => {
@@ -113,7 +130,8 @@ export default function HomePage() {
       <section className="grid items-center gap-12 pt-2 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:pt-8">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full border border-brass-500/30 bg-brass-400/10 px-3 py-1 text-xs font-semibold text-brass-300">
-            <Cpu className="h-3.5 w-3.5" aria-hidden /> Stockfish 16 + tu historial de Chess.com
+            <Cpu className="h-3.5 w-3.5" aria-hidden />{" "}
+            {APP_MODE === "demo" ? "Stockfish en tu navegador + tu historial de Chess.com" : "Stockfish + tu historial de Chess.com"}
           </span>
           <h1 className="mt-5 font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ivory sm:text-6xl">
             Deja de repetir <span className="italic text-brass-300">los mismos</span> errores.
@@ -159,6 +177,19 @@ export default function HomePage() {
                     Continuar como <strong className="font-semibold text-ivory-muted">{lastUser}</strong>
                   </Link>
                 )}
+                {!isAnalyzing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUsername(EXAMPLE_PLAYER.username);
+                      setTimeClass(EXAMPLE_PLAYER.timeClass);
+                      start(EXAMPLE_PLAYER);
+                    }}
+                    className="mt-2 block text-xs text-ivory-faint hover:text-brass-300"
+                  >
+                    ¿No juegas en Chess.com? <span className="font-semibold text-ivory-muted underline-offset-2 hover:underline">Prueba con las partidas blitz de Hikaru</span>
+                  </button>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -187,11 +218,11 @@ export default function HomePage() {
                     disabled={isAnalyzing}
                     value={gamesLimit}
                     onChange={setGamesLimit}
-                    options={[
-                      { value: 10, label: "10", hint: "~15 s" },
-                      { value: 15, label: "15", hint: "~25 s" },
-                      { value: 30, label: "30", hint: "~45 s" },
-                    ]}
+                    options={
+                      APP_MODE === "demo"
+                        ? DEMO_GAME_OPTIONS.map((n) => ({ value: n, label: String(n), hint: durations[n] ?? " " }))
+                        : FULL_GAME_OPTIONS.map(([n, hint]) => ({ value: n, label: String(n), hint }))
+                    }
                   />
                 </fieldset>
               </div>
@@ -204,7 +235,7 @@ export default function HomePage() {
               )}
             </form>
 
-            {progress && <AnalysisProgress progress={progress} error={errorMessage} onRetry={start} onCancel={cancel} />}
+            {progress && <AnalysisProgress progress={progress} error={errorMessage} onRetry={() => start()} onCancel={cancel} />}
           </Card>
         </div>
 

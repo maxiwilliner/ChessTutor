@@ -10,7 +10,7 @@ const BASE = "https://api.chess.com/pub";
 export const USERNAME_RE = /^[A-Za-z0-9_-]{3,25}$/;
 const MAX_RETRIES = 3;
 
-export type ChessComErrorKind = "invalid_username" | "rate_limited" | "network" | "server";
+export type ChessComErrorKind = "invalid_username" | "not_found" | "rate_limited" | "network" | "server";
 
 export class ChessComError extends Error {
   constructor(message: string, readonly kind: ChessComErrorKind) {
@@ -81,7 +81,9 @@ export async function getRecentGames(
 ): Promise<NormalizedGame[]> {
   checkUsername(username);
   const user = username.toLowerCase();
-  const archives = (await getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal))?.archives ?? [];
+  const index = await getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal);
+  if (!index) throw new ChessComError(`No existe el usuario «${username}» en Chess.com. Revisa cómo se escribe.`, "not_found");
+  const archives = index.archives ?? [];
   const games: NormalizedGame[] = [];
   for (const url of [...archives].reverse()) {
     const raw = (await getJson<{ games: RawGame[] }>(url, signal))?.games ?? [];
