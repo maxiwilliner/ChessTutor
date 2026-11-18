@@ -10,6 +10,7 @@ import { BlunderReplay } from "@/components/board/BlunderReplay";
 import { Card, Skeleton } from "@/components/ui/Card";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
+import { SoundToggle } from "@/components/ui/SoundToggle";
 import { cn } from "@/lib/cn";
 import { themeLabel, TRAINER_THEMES, type TrainerMode } from "@/lib/labels";
 import { useLastUsername } from "@/lib/useLastUsername";
@@ -219,7 +220,10 @@ function TrainerContent() {
             </p>
           </div>
         </div>
-        <MasteryMeter stats={stats} />
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <SoundToggle />
+          <MasteryMeter stats={stats} />
+        </div>
       </div>
 
       {/* Sesión */}
