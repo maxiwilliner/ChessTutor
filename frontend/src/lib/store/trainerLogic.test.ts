@@ -78,3 +78,16 @@ describe("ámbito: último análisis", () => {
     expect(selectPuzzles(puzzles, new Map(), {}, new Date()).length).toBe(puzzles.length);
   });
 });
+
+describe("estadísticas por ámbito", () => {
+  it("cifras del último análisis; repasos pendientes de todo el banco", () => {
+    const now = new Date("2026-01-10T00:00:00Z");
+    const [a, b, c] = puzzles;
+    const due = applyAttempt(undefined, req(c.id), new Date("2026-01-01T00:00:00Z")).progress; // c: vencido, fuera del análisis
+    const progress = new Map<string, PuzzleProgress>([[c.id, due]]);
+    const stats = trainerStats(user, puzzles, progress, now, [a.id, b.id]);
+    expect(stats.total_puzzles).toBe(2);
+    expect(stats.bank_puzzles).toBe(puzzles.length);
+    expect(stats.review_due_puzzles).toBe(1);
+  });
+});

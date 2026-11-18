@@ -67,7 +67,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
 
         <main
           id="contenido"
-          className={`mx-auto w-full max-w-7xl flex-1 px-4 pt-8 sm:px-6 sm:pb-12 lg:px-8 ${APP_MODE === "demo" ? "pb-12" : "pb-28"}`}
+          className={`mx-auto w-full max-w-7xl flex-1 px-4 pt-5 sm:px-6 sm:pb-12 sm:pt-8 lg:px-8 ${APP_MODE === "demo" ? "pb-12" : "pb-28"}`}
         >
           {children}
         </main>

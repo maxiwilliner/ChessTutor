@@ -417,3 +417,33 @@ async def test_puzzles_scope_latest_returns_last_analysis_in_game_order():
         analysis_module._LATEST_ANALYSIS.pop(user, None)
     assert [p["id"] for p in latest] == [new_a.id, new_b.id]
     assert {p["id"] for p in everything} == {old.id, new_a.id, new_b.id}
+
+
+@pytest.mark.asyncio
+async def test_trainer_stats_scope_latest_keeps_bank_reviews():
+    from backend.app.api.v1.endpoints import analysis as analysis_module
+    await init_db()
+    uid = uuid.uuid4().hex[:8]
+    user = f"stsc_{uid}"
+    old = sample_puzzle(puzzle_id=f"bb_o{uid}_m5_white", username=user)
+    new = sample_puzzle(puzzle_id=f"bb_n{uid}_m9_white", username=user)
+    async with AsyncSessionLocal() as session:
+        await save_puzzles_idempotent(session, user, [old, new])
+        await record_puzzle_attempt(session, PuzzleAttemptRequest(username=user, puzzle_id=old.id, played_uci="x", is_solved=False))
+        prog = (await session.execute(
+            UserPuzzleProgressEntity.__table__.select().where(UserPuzzleProgressEntity.puzzle_id == old.id)
+        )).first()
+        assert prog is not None
+        from sqlalchemy import update
+        await session.execute(update(UserPuzzleProgressEntity).where(UserPuzzleProgressEntity.puzzle_id == old.id)
+                              .values(next_review_at=datetime(2000, 1, 1)))
+        await session.commit()
+    analysis_module._LATEST_ANALYSIS[user] = {"summary": None, "puzzles": [new], "report": None}
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            latest = (await ac.get(f"/api/v1/trainer/stats/{user}?scope=latest")).json()
+            bank = (await ac.get(f"/api/v1/trainer/stats/{user}")).json()
+    finally:
+        analysis_module._LATEST_ANALYSIS.pop(user, None)
+    assert latest["total_puzzles"] == 1 and latest["bank_puzzles"] == 2 and latest["review_due_puzzles"] == 1
+    assert bank["total_puzzles"] == 2 and bank["review_due_puzzles"] == 1

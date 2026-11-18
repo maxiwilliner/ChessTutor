@@ -84,6 +84,8 @@ export interface PlayerDiagnosisSummary {
   clock_psychology: ClockPsychology;
   opening_repertoire_gaps: OpeningGap[];
   top_3_algorithmic_flags: AlgorithmicFlag[];
+  /** Solo demo: "low_power" si el análisis se hizo con profundidad reducida (móvil o equipo modesto). */
+  engine_profile?: "standard" | "low_power";
 }
 
 export interface BlunderGameMetadata {
@@ -201,6 +203,8 @@ export interface TrainerStatsResponse {
   mastery_percentage: number;
   top_leak_theme?: string | null;
   themes_breakdown: Record<string, TrainerThemeStats>;
+  /** Ejercicios de todo el banco (el resto de cifras pueden ser solo del último análisis). */
+  bank_puzzles?: number | null;
 }
 
 export interface TutorLeak {

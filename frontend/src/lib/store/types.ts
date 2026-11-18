@@ -34,7 +34,8 @@ export interface DataStore {
   getReport(username: string): Promise<TutorPedagogicalReport>;
   getProfile(username: string): Promise<PlayerProfile | null>;
   getPuzzles(username: string, filter?: GetPuzzlesFilter): Promise<BlunderBankItem[]>;
-  getTrainerStats(username: string): Promise<TrainerStatsResponse>;
+  /** `scope="latest"`: cifras del último análisis; los repasos pendientes siempre son de todo el banco. */
+  getTrainerStats(username: string, scope?: "latest" | "all"): Promise<TrainerStatsResponse>;
   submitAttempt(req: PuzzleAttemptRequest): Promise<PuzzleAttemptResponse | null>;
   evaluateMove(puzzle: BlunderBankItem, playedUci: string, fen: string): Promise<EvaluateMoveResponse>;
 }

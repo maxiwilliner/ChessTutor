@@ -341,10 +341,13 @@ async def record_puzzle_attempt(
 
 async def get_user_trainer_stats(
     session: AsyncSession,
-    username: str
+    username: str,
+    puzzle_ids: Optional[List[str]] = None,
 ) -> TrainerStatsResponse:
     """
     Computes aggregated practice and mastery statistics for the user.
+    With `puzzle_ids` (latest analysis) the figures cover only those puzzles, except
+    `review_due_puzzles`, which always counts the whole bank (reviews come from any analysis).
     """
     clean_username = username.strip().lower()
     now = utc_now_naive()
@@ -362,12 +365,19 @@ async def get_user_trainer_stats(
         .where(BlunderBankEntity.username == clean_username)
     )
 
-    rows = (await session.execute(query)).all()
+    all_rows = (await session.execute(query)).all()
+    review_due_puzzles = sum(
+        1 for _, prog in all_rows if prog and prog.next_review_at and prog.next_review_at <= now
+    )
+    if puzzle_ids is not None:
+        wanted = set(puzzle_ids)
+        rows = [r for r in all_rows if r[0].id in wanted]
+    else:
+        rows = all_rows
 
     total_puzzles = len(rows)
     solved_puzzles = 0
     mastered_puzzles = 0
-    review_due_puzzles = 0
     repeated_blunders = 0
 
     theme_counts: Dict[str, Dict[str, int]] = {}
@@ -386,8 +396,6 @@ async def get_user_trainer_stats(
             if progress.is_mastered:
                 mastered_puzzles += 1
                 theme_counts[th]["mastered"] += 1
-            if progress.next_review_at and progress.next_review_at <= now:
-                review_due_puzzles += 1
 
     mastery_pct = round((mastered_puzzles / total_puzzles) * 100.0, 1) if total_puzzles > 0 else 0.0
 
@@ -419,5 +427,6 @@ async def get_user_trainer_stats(
         repeated_blunders_count=repeated_blunders,
         mastery_percentage=mastery_pct,
         top_leak_theme=top_leak_theme,
-        themes_breakdown=themes_breakdown
+        themes_breakdown=themes_breakdown,
+        bank_puzzles=len(all_rows),
     )

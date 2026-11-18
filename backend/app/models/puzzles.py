@@ -120,5 +120,7 @@ class TrainerStatsResponse(BaseModel):
     mastery_percentage: float
     top_leak_theme: Optional[str] = None
     themes_breakdown: Dict[str, TrainerThemeStats] = {}
+    # Ejercicios de todo el banco (las demás cifras pueden ser solo del último análisis)
+    bank_puzzles: Optional[int] = None
 
 

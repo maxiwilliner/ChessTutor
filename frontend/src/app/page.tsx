@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { store } from "@/lib/store";
 import { APP_MODE } from "@/lib/mode";
+import { EXAMPLE_PLAYER, isExampleUser } from "@/lib/example";
 import { estimateSeconds, formatDuration } from "@/analysis/device";
 import { useLastUsername } from "@/lib/useLastUsername";
 import { DemoBoard } from "@/components/board/DemoBoard";
@@ -52,8 +53,6 @@ const FULL_GAME_OPTIONS: [number, string][] = [
   [15, "~25 s"],
   [30, "~45 s"],
 ];
-/** Jugador público conocido para probar sin cuenta de Chess.com. */
-const EXAMPLE_PLAYER = { username: "hikaru", timeClass: "blitz" };
 
 export default function HomePage() {
   const router = useRouter();
@@ -112,7 +111,7 @@ export default function HomePage() {
         },
       })
       .then(() => {
-        saveLastUser(cleanUser);
+        if (!isExampleUser(cleanUser)) saveLastUser(cleanUser);
         window.setTimeout(() => router.push(`/dashboard?username=${encodeURIComponent(cleanUser)}`), 700);
       })
       .catch((err: unknown) => {

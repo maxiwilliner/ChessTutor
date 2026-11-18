@@ -49,8 +49,8 @@ export async function getPuzzles(username: string, filter?: GetPuzzlesFilter): P
   return res.json();
 }
 
-export async function getTrainerStats(username: string): Promise<TrainerStatsResponse> {
-  const res = await fetch(`${API_BASE}/trainer/stats/${encodeURIComponent(username)}`);
+export async function getTrainerStats(username: string, scope: "latest" | "all" = "all"): Promise<TrainerStatsResponse> {
+  const res = await fetch(`${API_BASE}/trainer/stats/${encodeURIComponent(username)}?scope=${scope}`);
   if (!res.ok) throw new Error("No se pudieron cargar las estadísticas del entrenador");
   return res.json();
 }

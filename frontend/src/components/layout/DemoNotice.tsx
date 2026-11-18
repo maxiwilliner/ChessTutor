@@ -21,9 +21,12 @@ export function DemoBanner() {
         {persistent ? (
           <>
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span>
+            <span className="hidden sm:inline">
               <strong className="font-semibold">Demo gratuita.</strong> El análisis se hace en tu navegador y tus datos se guardan solo
               aquí: no tenemos servidor ni cuentas.
+            </span>
+            <span className="sm:hidden">
+              <strong className="font-semibold">Demo gratuita</strong> · tus datos se quedan en este navegador
             </span>
           </>
         ) : (

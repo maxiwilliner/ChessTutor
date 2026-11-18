@@ -175,14 +175,21 @@ export function selectPuzzles(
 
 export function trainerStats(
   username: string,
-  puzzles: BlunderBankItem[],
+  bank: BlunderBankItem[],
   progress: Map<string, PuzzleProgress>,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Ids del último análisis: las cifras se calculan solo sobre ellos (salvo los repasos pendientes). */
+  latestIds?: string[]
 ): TrainerStatsResponse {
+  const wanted = latestIds ? new Set(latestIds) : null;
+  const puzzles = wanted ? bank.filter((p) => wanted.has(p.id)) : bank;
+  const due = bank.filter((p) => {
+    const next = progress.get(p.id)?.next_review_at;
+    return !!next && new Date(next) <= now;
+  }).length;
   const themes: Record<string, { total: number; solved: number; mastered: number }> = {};
   let solved = 0;
   let mastered = 0;
-  let due = 0;
   let repeated = 0;
   for (const item of puzzles) {
     const th = item.classification.theme || "general";
@@ -199,7 +206,6 @@ export function trainerStats(
       mastered += 1;
       themes[th].mastered += 1;
     }
-    if (p.next_review_at && new Date(p.next_review_at) <= now) due += 1;
   }
   const round1 = (x: number) => Math.round(x * 10) / 10;
   const specific = Object.entries(themes).filter(([t]) => t !== GENERIC_THEME);
@@ -215,6 +221,7 @@ export function trainerStats(
     repeated_blunders_count: repeated,
     mastery_percentage: puzzles.length ? round1((mastered / puzzles.length) * 100) : 0,
     top_leak_theme: top?.[0] ?? null,
+    bank_puzzles: bank.length,
     themes_breakdown: Object.fromEntries(
       Object.entries(themes).map(([t, c]) => [
         t,

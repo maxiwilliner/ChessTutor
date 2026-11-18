@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { GetPuzzlesFilter } from "@/lib/api";
 import { store } from "@/lib/store";
+import { isExampleUser } from "@/lib/example";
+import { useSessionStats } from "@/lib/useSessionStats";
 import { BlunderBankItem, TrainerStatsResponse } from "@/types/api";
 import { BlunderReplay } from "@/components/board/BlunderReplay";
 import { Card, Skeleton } from "@/components/ui/Card";
@@ -29,6 +31,8 @@ import {
   RotateCcw,
   Shapes,
   Search,
+  Filter,
+  ChevronDown,
 } from "lucide-react";
 
 const MODES: TrainerMode[] = ["all", "leak", "impulse", "theme"];
@@ -58,16 +62,17 @@ function TrainerContent() {
   // Por defecto, los ejercicios del último análisis (los repasos programados miran todo el banco)
   const [scope, setScope] = useState<"latest" | "all">("latest");
 
-  const [sessionStreak, setSessionStreak] = useState(0);
-  const [sessionAttempts, setSessionAttempts] = useState(0);
-  const [sessionFirstTryCount, setSessionFirstTryCount] = useState(0);
-  const [sessionBlundersAvoided, setSessionBlundersAvoided] = useState(0);
+  const [session, updateSession] = useSessionStats(username);
+  const { streak: sessionStreak, attempts: sessionAttempts, firstTry: sessionFirstTryCount, avoided: sessionBlundersAvoided } = session;
+  // Móvil: filtros plegados para que el tablero quede a la vista
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const statsScope = onlyReviewDue ? "all" : scope;
 
   // Usuario: parámetro de URL > último usuario guardado
   useEffect(() => {
     if (rawParam) {
       setUsername(rawParam);
-      saveLastUser(rawParam);
+      if (!isExampleUser(rawParam)) saveLastUser(rawParam);
     } else if (lastUser) {
       setUsername(lastUser);
       router.replace(`/trainer?username=${encodeURIComponent(lastUser)}`);
@@ -86,11 +91,11 @@ function TrainerContent() {
   const fetchStats = useCallback(async () => {
     if (!username) return;
     try {
-      setStats(await store.getTrainerStats(username));
+      setStats(await store.getTrainerStats(username, statsScope));
     } catch {
       // las estadísticas son opcionales
     }
-  }, [username]);
+  }, [username, statsScope]);
 
   const fetchPuzzles = useCallback(async () => {
     if (!username) return;
@@ -122,14 +127,12 @@ function TrainerContent() {
   }, [username, fetchStats, fetchPuzzles]);
 
   const handleAttemptFinished = (result: { isSolved: boolean; firstTry: boolean; repeatedOldBlunder: boolean }) => {
-    setSessionAttempts((p) => p + 1);
-    if (result.isSolved) {
-      setSessionStreak((p) => p + 1);
-      if (result.firstTry) setSessionFirstTryCount((p) => p + 1);
-      if (!result.repeatedOldBlunder) setSessionBlundersAvoided((p) => p + 1);
-    } else {
-      setSessionStreak(0);
-    }
+    updateSession((s) => ({
+      attempts: s.attempts + 1,
+      streak: result.isSolved ? s.streak + 1 : 0,
+      firstTry: s.firstTry + (result.isSolved && result.firstTry ? 1 : 0),
+      avoided: s.avoided + (result.isSolved && !result.repeatedOldBlunder ? 1 : 0),
+    }));
     fetchStats();
   };
 
@@ -201,41 +204,76 @@ function TrainerContent() {
   const firstTryRate = sessionAttempts > 0 ? Math.round((sessionFirstTryCount / sessionAttempts) * 100) : null;
   const themeCount = (key: string) => stats?.themes_breakdown[key]?.total_puzzles ?? 0;
 
+  const puzzleNav =
+    !loading && puzzles.length > 0 ? (
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handlePrev} disabled={currentIndex === 0} aria-label="Ejercicio anterior">
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+        </Button>
+        <span className="num min-w-12 text-center text-xs font-semibold text-ivory-muted">
+          {currentIndex + 1} / {puzzles.length}
+        </span>
+        <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handleNext} aria-label="Siguiente ejercicio">
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+    ) : null;
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      {/* Cabecera */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
+      {/* Cabecera: una sola fila en móvil */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href={`/dashboard?username=${encodeURIComponent(username)}`}
             aria-label="Volver al diagnóstico"
-            className={buttonClasses("secondary", "md", "w-10 px-0")}
+            className={buttonClasses("secondary", "md", "w-10 shrink-0 px-0")}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
-          <div>
+          <div className="min-w-0">
             <h1 className="font-display text-2xl font-semibold text-ivory sm:text-3xl">Entrenador</h1>
-            <p className="text-xs text-ivory-faint">
+            <p className="hidden truncate text-xs text-ivory-faint sm:block">
               Posiciones reales de las partidas de <span className="font-semibold text-ivory-muted">{username}</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex shrink-0 items-center gap-2">
           <SoundToggle />
-          <MasteryMeter stats={stats} />
+          <MasteryMeter stats={stats} scope={statsScope} />
         </div>
       </div>
 
-      {/* Sesión */}
-      <Card tone="inset" className="grid grid-cols-2 divide-ink-600/60 sm:grid-cols-4 sm:divide-x">
-        <SessionStat icon={Target} tone="text-brass-300" label="1.er intento" value={firstTryRate === null ? "—" : `${firstTryRate}%`} sub={`${sessionFirstTryCount}/${sessionAttempts}`} />
-        <SessionStat icon={Flame} tone="text-amber-300" label="Racha" value={String(sessionStreak)} sub="seguidos" highlight={sessionStreak >= 3} />
-        <SessionStat icon={ShieldCheck} tone="text-emerald-300" label="Blunders evitados" value={String(sessionBlundersAvoided)} sub="en sesión" />
-        <SessionStat icon={RotateCcw} tone="text-cyan-300" label="Repaso pendiente" value={String(stats?.review_due_puzzles ?? 0)} sub="hoy" />
-      </Card>
+      {/* Móvil: botón de filtros + navegación en la misma fila, para que el tablero quede a la vista */}
+      <div className="flex items-center gap-2 sm:hidden">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          aria-expanded={filtersOpen}
+          aria-controls="filtros-entrenador"
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-ink-600 bg-ink-900/80 px-3 py-2 text-sm text-ivory-muted"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Filter className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="truncate">
+              {onlyReviewDue ? "Repaso programado" : scope === "latest" ? "Último análisis" : "Todo el banco"}
+            </span>
+          </span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", filtersOpen && "rotate-180")} aria-hidden />
+        </button>
+        {puzzleNav}
+      </div>
 
-      {/* Filtros */}
-      <div className="space-y-3">
+      {/* Sesión y filtros (plegados en móvil) */}
+      <div id="filtros-entrenador" className={cn("space-y-4 sm:block sm:space-y-6", filtersOpen ? "block" : "hidden")}>
+        <Card tone="inset" className="grid grid-cols-4 divide-x divide-ink-600/60">
+          <SessionStat icon={Target} tone="text-brass-300" label="1.er intento" value={firstTryRate === null ? "—" : `${firstTryRate}%`} sub={`${sessionFirstTryCount}/${sessionAttempts}`} />
+          <SessionStat icon={Flame} tone="text-amber-300" label="Racha" value={String(sessionStreak)} sub="seguidos" highlight={sessionStreak >= 3} />
+          <SessionStat icon={ShieldCheck} tone="text-emerald-300" label="Blunders evitados" value={String(sessionBlundersAvoided)} sub="en sesión" />
+          <SessionStat icon={RotateCcw} tone="text-cyan-300" label="Repaso pendiente" value={String(stats?.review_due_puzzles ?? 0)} sub="hoy" />
+        </Card>
+
+        <div className="space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <Segmented<TrainerMode>
             ariaLabel="Tipo de ejercicios"
@@ -262,7 +300,7 @@ function TrainerContent() {
             onChange={setScope}
             options={[
               { value: "latest", label: "Último análisis" },
-              { value: "all", label: "Todo el banco", hint: stats ? `${stats.total_puzzles}` : undefined },
+              { value: "all", label: "Todo el banco", hint: stats?.bank_puzzles != null ? `${stats.bank_puzzles}` : undefined },
             ]}
           />
           <button
@@ -309,28 +347,19 @@ function TrainerContent() {
             })}
           </div>
         )}
+        </div>
       </div>
 
-      {/* Navegación entre ejercicios */}
-      {!loading && puzzles.length > 0 && (
-        <div className="flex items-center justify-between gap-3">
+      {/* Navegación entre ejercicios (escritorio) */}
+      {puzzleNav && (
+        <div className="hidden items-center justify-between gap-3 sm:flex">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-750" aria-hidden>
             <div
               className="h-full rounded-full bg-brass-400 transition-[width] duration-500"
               style={{ width: `${((currentIndex + 1) / puzzles.length) * 100}%` }}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handlePrev} disabled={currentIndex === 0} aria-label="Ejercicio anterior">
-              <ChevronLeft className="h-4 w-4" aria-hidden />
-            </Button>
-            <span className="num min-w-14 text-center text-xs font-semibold text-ivory-muted">
-              {currentIndex + 1} / {puzzles.length}
-            </span>
-            <Button variant="secondary" size="sm" className="w-8 px-0" onClick={handleNext} aria-label="Siguiente ejercicio">
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </Button>
-          </div>
+          {puzzleNav}
         </div>
       )}
 
@@ -387,28 +416,30 @@ function SessionStat({
   sub: string;
   highlight?: boolean;
 }) {
+  // En móvil: solo icono y cifra (la etiqueta queda como texto accesible y tooltip)
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className="flex flex-col items-center gap-1 px-2 py-2.5 sm:flex-row sm:gap-3 sm:px-4 sm:py-3" title={`${label}: ${value} ${sub}`}>
       <Icon className={cn("h-4 w-4 shrink-0", tone, highlight && "animate-pulse")} aria-hidden />
-      <div className="min-w-0">
-        <div className="truncate text-[11px] text-ivory-faint">{label}</div>
-        <div className="flex items-baseline gap-1.5">
-          <span className={cn("num text-lg font-semibold", tone)}>{value}</span>
-          <span className="truncate text-[11px] text-ivory-faint">{sub}</span>
+      <div className="min-w-0 text-center sm:text-left">
+        <div className="hidden truncate text-[11px] text-ivory-faint sm:block">{label}</div>
+        <span className="sr-only sm:hidden">{label}: </span>
+        <div className="flex items-baseline justify-center gap-1.5 sm:justify-start">
+          <span className={cn("num text-base font-semibold sm:text-lg", tone)}>{value}</span>
+          <span className="hidden truncate text-[11px] text-ivory-faint sm:inline">{sub}</span>
         </div>
       </div>
     </div>
   );
 }
 
-function MasteryMeter({ stats }: { stats: TrainerStatsResponse | null }) {
+function MasteryMeter({ stats, scope }: { stats: TrainerStatsResponse | null; scope: "latest" | "all" }) {
   const pct = stats?.mastery_percentage ?? 0;
   const animated = useCountUp(pct);
   const r = 20;
   const c = 2 * Math.PI * r;
   return (
-    <div className="flex items-center gap-3 self-start rounded-2xl border border-ink-600/70 bg-ink-800/70 py-2 pl-2 pr-4 sm:self-auto">
-      <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden>
+    <div className="flex items-center gap-3 rounded-2xl border border-ink-600/70 bg-ink-800/70 p-1.5 sm:py-2 sm:pl-2 sm:pr-4">
+      <svg viewBox="0 0 48 48" className="hidden h-12 w-12 -rotate-90 sm:block" aria-hidden>
         <circle cx="24" cy="24" r={r} fill="none" stroke="#1F2733" strokeWidth="5" />
         <circle
           cx="24"
@@ -422,11 +453,11 @@ function MasteryMeter({ stats }: { stats: TrainerStatsResponse | null }) {
           strokeDashoffset={c * (1 - animated / 100)}
         />
       </svg>
-      <div>
-        <div className="text-[11px] text-ivory-faint">Maestría global</div>
-        <div className="num text-lg font-semibold text-brass-300">
+      <div className="px-1.5 sm:px-0" title={`${scope === "latest" ? "Maestría del análisis" : "Maestría global"}: ${stats?.mastered_puzzles ?? 0}/${stats?.total_puzzles ?? 0}`}>
+        <div className="hidden text-[11px] text-ivory-faint sm:block">{scope === "latest" ? "Maestría del análisis" : "Maestría global"}</div>
+        <div className="num text-base font-semibold text-brass-300 sm:text-lg">
           {Math.round(animated)}%
-          <span className="ml-1.5 text-xs font-normal text-ivory-faint">
+          <span className="ml-1.5 hidden text-xs font-normal text-ivory-faint sm:inline">
             {stats?.mastered_puzzles ?? 0}/{stats?.total_puzzles ?? 0}
           </span>
         </div>

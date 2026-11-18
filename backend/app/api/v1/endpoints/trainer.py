@@ -2,7 +2,7 @@ import chess
 import logging
 from typing import Optional
 from backend.app.api.v1.params import UsernamePath
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,12 +40,19 @@ async def submit_puzzle_attempt(
 @router.get("/stats/{username}", response_model=TrainerStatsResponse)
 async def get_trainer_stats(
     username: UsernamePath,
+    scope: str = Query("all", pattern="^(all|latest)$", description="latest: only the latest analysis (reviews due: whole bank)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns aggregated practice statistics, mastery percentage and theme breakdown.
     """
-    return await get_user_trainer_stats(db, username)
+    puzzle_ids = None
+    if scope == "latest":
+        from backend.app.api.v1.endpoints.analysis import _LATEST_ANALYSIS
+        latest = _LATEST_ANALYSIS.get(username.lower())
+        if latest and latest.get("puzzles"):
+            puzzle_ids = [p.id for p in latest["puzzles"]]
+    return await get_user_trainer_stats(db, username, puzzle_ids=puzzle_ids)
 
 
 @router.post("/evaluate-move", response_model=EvaluateMoveResponse)

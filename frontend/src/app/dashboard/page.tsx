@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { store } from "@/lib/store";
+import { isExampleUser } from "@/lib/example";
 import { FeedbackLink } from "@/components/layout/FeedbackLink";
 import { PlayerDiagnosisSummary, PlayerProfile, TutorPedagogicalReport } from "@/types/api";
 import { DiagnosisCard } from "@/components/tutor/DiagnosisCard";
@@ -53,7 +54,7 @@ function DashboardContent() {
         if (cancelled) return;
         setSummary(sumData);
         setTutor(tutorData);
-        saveLastUser(usernameParam);
+        if (!isExampleUser(usernameParam)) saveLastUser(usernameParam);
       } catch (err: unknown) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar el diagnóstico.");
       } finally {
@@ -130,6 +131,11 @@ function DashboardContent() {
                 {profile?.title && <Badge tone="brass">{profile.title}</Badge>}
                 <Badge>{TIME_CLASS_LABEL[p.time_class] ?? p.time_class}</Badge>
                 <Badge>{p.games_analyzed} partidas</Badge>
+                {summary.engine_profile === "low_power" && (
+                  <Badge tone="amber" title="En este dispositivo el motor analiza con menos profundidad para no tardar demasiado.">
+                    Análisis rápido
+                  </Badge>
+                )}
               </div>
               <h1 className="mt-2 truncate font-display text-3xl font-semibold text-ivory sm:text-4xl">{p.username}</h1>
               <p className="mt-1 flex flex-wrap items-center gap-x-3 text-sm text-ivory-faint">
@@ -195,6 +201,14 @@ function DashboardContent() {
           style={{ animationDelay: "180ms" }}
         />
       </div>
+
+      {p.games_analyzed < 10 && (
+        <p className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3 text-sm text-amber-100">
+          <AlertOctagon className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+          Con solo {p.games_analyzed} {p.games_analyzed === 1 ? "partida" : "partidas"} los porcentajes cambian mucho de una partida a otra.
+          Analiza 10 o más para un diagnóstico fiable.
+        </p>
+      )}
 
       {/* Índice de secciones */}
       <nav

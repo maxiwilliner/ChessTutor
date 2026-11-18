@@ -44,6 +44,18 @@ function EvalAt12({ value }: { value: number }) {
   );
 }
 
+/** Aperturas con 1-2 partidas: la media es poco fiable. */
+function LowSample() {
+  return (
+    <span
+      className="ml-1.5 rounded bg-ink-700 px-1 py-px font-sans text-[10px] font-medium text-ivory-faint"
+      title="Con 1 o 2 partidas la media es poco fiable"
+    >
+      poca muestra
+    </span>
+  );
+}
+
 export const OpeningStatsTable: React.FC<{ openings: OpeningGap[] }> = ({ openings }) => {
   const sorted = [...openings].sort((a, b) => a.avg_eval_at_move_12 - b.avg_eval_at_move_12);
 
@@ -73,7 +85,10 @@ export const OpeningStatsTable: React.FC<{ openings: OpeningGap[] }> = ({ openin
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                   <ColorChip color={op.color} />
-                  <span className="num text-xs text-ivory-faint">{op.games_played} partidas</span>
+                  <span className="num text-xs text-ivory-faint">
+                    {op.games_played} {op.games_played === 1 ? "partida" : "partidas"}
+                    {op.games_played <= 2 && <LowSample />}
+                  </span>
                   <WinRate rate={op.win_rate} />
                 </div>
                 <div className="mt-2 text-xs text-ivory-faint">Error típico: {themeLabel(op.dominant_blunder_motif)}</div>
@@ -103,7 +118,10 @@ export const OpeningStatsTable: React.FC<{ openings: OpeningGap[] }> = ({ openin
                       {op.name}
                     </td>
                     <td className="px-3 py-3"><ColorChip color={op.color} /></td>
-                    <td className="num px-3 py-3 text-right text-xs text-ivory-muted">{op.games_played}</td>
+                    <td className="num px-3 py-3 text-right text-xs text-ivory-muted">
+                      {op.games_played}
+                      {op.games_played <= 2 && <LowSample />}
+                    </td>
                     <td className="px-3 py-3"><WinRate rate={op.win_rate} /></td>
                     <td className="px-3 py-3"><EvalAt12 value={op.avg_eval_at_move_12} /></td>
                     <td className="py-3 pl-3 text-xs text-ivory-muted">{themeLabel(op.dominant_blunder_motif)}</td>

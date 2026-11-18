@@ -9,7 +9,7 @@ import type { BlunderBankItem } from "@/types/api";
 import type { EvalCache } from "@/analysis/evaluator";
 import { getProfile } from "@/analysis/chesscom";
 import { getBrowserEngine } from "@/analysis/engine/browser";
-import { adaptiveDepth } from "@/analysis/device";
+import { adaptiveDepth, isLowPowerDevice } from "@/analysis/device";
 import { ANALYSIS_VERSION } from "@/analysis/version";
 import { applyAttempt, evaluateAlternativeMove, selectPuzzles, trainerStats, progressKey } from "./trainerLogic";
 import { getLocalBackend, resetLocalBackend, type LocalBackend } from "./localBackend";
@@ -61,7 +61,7 @@ export const localStore: DataStore = {
     await b.putAnalysis({
       username: u,
       analysis_version: ANALYSIS_VERSION,
-      summary: result.summary,
+      summary: { ...result.summary, engine_profile: isLowPowerDevice() ? "low_power" : "standard" },
       report: result.report,
       puzzle_ids: result.puzzles.map((p) => p.id),
       created_at: new Date().toISOString(),
@@ -97,9 +97,11 @@ export const localStore: DataStore = {
     return selectPuzzles(puzzles, progress, filter, new Date(), latestIds);
   },
 
-  async getTrainerStats(username) {
-    const { puzzles, progress } = await loadUser(await getLocalBackend(), username);
-    return trainerStats(username, puzzles, progress);
+  async getTrainerStats(username, scope = "all") {
+    const b = await getLocalBackend();
+    const { puzzles, progress } = await loadUser(b, username);
+    const latestIds = scope === "latest" ? (await b.getAnalysis(norm(username)))?.puzzle_ids : undefined;
+    return trainerStats(username, puzzles, progress, new Date(), latestIds);
   },
 
   async submitAttempt(req) {
