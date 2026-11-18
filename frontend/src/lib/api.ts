@@ -29,6 +29,8 @@ export interface GetPuzzlesFilter {
   top_leak_only?: boolean;
   status?: "all" | "unsolved" | "mastered" | "review_due";
   psych_tag?: "impulsive" | "time_trouble" | "normal";
+  /** "latest" (por defecto en el entrenador): solo los ejercicios del último análisis, en el orden de las partidas. */
+  scope?: "latest" | "all";
   limit?: number;
 }
 
@@ -38,6 +40,7 @@ export async function getPuzzles(username: string, filter?: GetPuzzlesFilter): P
   if (filter?.top_leak_only) query.append("top_leak_only", "true");
   if (filter?.status && filter.status !== "all") query.append("status", filter.status);
   if (filter?.psych_tag) query.append("psych_tag", filter.psych_tag);
+  if (filter?.scope) query.append("scope", filter.scope);
   if (filter?.limit) query.append("limit", filter.limit.toString());
 
   const queryString = query.toString() ? `?${query.toString()}` : "";

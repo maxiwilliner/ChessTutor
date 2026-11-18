@@ -54,6 +54,8 @@ function TrainerContent() {
   );
   const [selectedTheme, setSelectedTheme] = useState<string>(themeParam || "hanging_piece");
   const [onlyReviewDue, setOnlyReviewDue] = useState(false);
+  // Por defecto, los ejercicios del último análisis (los repasos programados miran todo el banco)
+  const [scope, setScope] = useState<"latest" | "all">("latest");
 
   const [sessionStreak, setSessionStreak] = useState(0);
   const [sessionAttempts, setSessionAttempts] = useState(0);
@@ -99,6 +101,7 @@ function TrainerContent() {
       else if (activeMode === "theme") filter.theme = selectedTheme;
       else if (activeMode === "impulse") filter.psych_tag = "impulsive";
       if (onlyReviewDue) filter.status = "review_due";
+      filter.scope = onlyReviewDue ? "all" : scope;
 
       setPuzzles(await store.getPuzzles(username, filter));
       setCurrentIndex(0);
@@ -108,7 +111,7 @@ function TrainerContent() {
     } finally {
       setLoading(false);
     }
-  }, [username, activeMode, selectedTheme, onlyReviewDue]);
+  }, [username, activeMode, selectedTheme, onlyReviewDue, scope]);
 
   useEffect(() => {
     if (username) {
@@ -246,6 +249,18 @@ function TrainerContent() {
               { value: "theme", label: "Por tema", icon: Shapes },
             ]}
           />
+          <div className="flex flex-wrap items-center gap-2">
+          <Segmented<"latest" | "all">
+            ariaLabel="Qué ejercicios mostrar"
+            size="sm"
+            value={onlyReviewDue ? "all" : scope}
+            disabled={onlyReviewDue}
+            onChange={setScope}
+            options={[
+              { value: "latest", label: "Último análisis" },
+              { value: "all", label: "Todo el banco", hint: stats ? `${stats.total_puzzles}` : undefined },
+            ]}
+          />
           <button
             type="button"
             aria-pressed={onlyReviewDue}
@@ -261,6 +276,7 @@ function TrainerContent() {
             Solo repaso programado
             <span className="num rounded-md bg-ink-750 px-1.5 text-xs">{stats?.review_due_puzzles ?? 0}</span>
           </button>
+          </div>
         </div>
 
         {activeMode === "theme" && (

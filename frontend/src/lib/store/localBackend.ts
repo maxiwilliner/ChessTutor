@@ -21,6 +21,8 @@ export interface StoredAnalysis {
   analysis_version?: number;
   summary: PlayerDiagnosisSummary;
   report: TutorPedagogicalReport;
+  /** Ejercicios de este análisis, en el orden de las partidas (más reciente primero). Ausente en datos antiguos. */
+  puzzle_ids?: string[];
   created_at: string;
 }
 

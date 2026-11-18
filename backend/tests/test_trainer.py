@@ -395,3 +395,25 @@ async def test_top_leak_ignores_generic_theme_and_training_order():
         impulsive = await get_user_puzzles(session, user, psych_tag="impulsive")
         assert fork.id not in {p.id for p in impulsive}
         assert len(impulsive) == 4
+
+
+@pytest.mark.asyncio
+async def test_puzzles_scope_latest_returns_last_analysis_in_game_order():
+    from backend.app.api.v1.endpoints import analysis as analysis_module
+    await init_db()
+    uid = uuid.uuid4().hex[:8]
+    user = f"scope_{uid}"
+    old = sample_puzzle(puzzle_id=f"bb_old{uid}_m5_white", username=user)
+    new_a = sample_puzzle(puzzle_id=f"bb_new{uid}_m30_white", username=user)
+    new_b = sample_puzzle(puzzle_id=f"bb_new{uid}_m10_white", username=user)
+    async with AsyncSessionLocal() as session:
+        await save_puzzles_idempotent(session, user, [old, new_a, new_b])
+    analysis_module._LATEST_ANALYSIS[user] = {"summary": None, "puzzles": [new_a, new_b], "report": None}
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            latest = (await ac.get(f"/api/v1/analysis/puzzles/{user}?scope=latest")).json()
+            everything = (await ac.get(f"/api/v1/analysis/puzzles/{user}?scope=all")).json()
+    finally:
+        analysis_module._LATEST_ANALYSIS.pop(user, None)
+    assert [p["id"] for p in latest] == [new_a.id, new_b.id]
+    assert {p["id"] for p in everything} == {old.id, new_a.id, new_b.id}

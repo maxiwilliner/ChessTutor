@@ -1,5 +1,6 @@
 import json
 import logging
+from collections import Counter
 from typing import Optional, List
 
 import chess.engine
@@ -15,7 +16,7 @@ from backend.app.models.puzzles import BlunderBankItem
 from backend.app.modules.chesscom.client import ChessComClient
 from backend.app.modules.engine.evaluator import evaluate_game_smart
 from backend.app.modules.heuristics.aggregator import assemble_diagnosis_and_puzzles
-from backend.app.db.puzzle_service import save_puzzles_idempotent, get_user_puzzles
+from backend.app.db.puzzle_service import GENERIC_THEME, save_puzzles_idempotent, get_user_puzzles
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,7 @@ async def get_latest_puzzles(
     top_leak_only: bool = Query(False, description="Filter by user's top tactical leak"),
     status: str = Query("all", description="Filter by status: all, unsolved, mastered, review_due"),
     psych_tag: Optional[str] = Query(None, pattern="^(impulsive|time_trouble|normal)$", description="Filter by clock psychology tag"),
+    scope: str = Query("all", pattern="^(all|latest)$", description="latest: only puzzles from the latest analysis, in game order"),
     limit: int = Query(200, ge=1, le=500, description="Max puzzles to return"),
     db: AsyncSession = Depends(get_db)
 ):
@@ -141,15 +143,29 @@ async def get_latest_puzzles(
     Returns the interactive exercises (BlunderBank) generated from the user's mistakes.
     Pulls from SQLite with Spaced Repetition status, falling back to memory if DB has none.
     """
+    # scope=latest: only the puzzles of the latest (in-memory) analysis, in game order.
+    # Without an analysis in memory (e.g. after a restart) the whole bank is returned.
+    latest = _LATEST_ANALYSIS.get(username.lower()) if scope == "latest" else None
+    latest_ids = [p.id for p in latest["puzzles"]] if latest and latest.get("puzzles") else None
+
     db_puzzles = await get_user_puzzles(
         session=db,
         username=username,
         theme=theme,
-        top_leak_only=top_leak_only,
+        top_leak_only=top_leak_only and latest_ids is None,
         status=status,
-        limit=limit,
+        limit=limit if latest_ids is None else 1000,
         psych_tag=psych_tag,
     )
+    if latest_ids is not None:
+        order = {pid: i for i, pid in enumerate(latest_ids)}
+        db_puzzles = sorted((p for p in db_puzzles if p.id in order), key=lambda p: order[p.id])
+        if top_leak_only and not theme:
+            counts = Counter(p.classification.theme for p in db_puzzles if p.classification.theme != GENERIC_THEME)
+            if counts:
+                top = counts.most_common(1)[0][0]
+                db_puzzles = [p for p in db_puzzles if p.classification.theme == top]
+        db_puzzles = db_puzzles[:limit]
     if db_puzzles:
         return db_puzzles
 

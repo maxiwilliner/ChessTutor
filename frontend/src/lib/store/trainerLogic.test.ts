@@ -69,3 +69,12 @@ describe("selección de ejercicios", () => {
     expect(impulsive.every((p) => p.classification.psychological_tag === "impulsive")).toBe(true);
   });
 });
+
+describe("ámbito: último análisis", () => {
+  it("solo los ejercicios del último análisis, en el orden de las partidas", () => {
+    const latest = [puzzles[2].id, puzzles[0].id];
+    const out = selectPuzzles(puzzles, new Map(), {}, new Date(), latest);
+    expect(out.map((p) => p.id)).toEqual(latest);
+    expect(selectPuzzles(puzzles, new Map(), {}, new Date()).length).toBe(puzzles.length);
+  });
+});

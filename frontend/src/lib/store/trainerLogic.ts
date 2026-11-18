@@ -140,16 +140,25 @@ export function selectPuzzles(
   puzzles: BlunderBankItem[],
   progress: Map<string, PuzzleProgress>,
   filter: GetPuzzlesFilter = {},
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Ids del último análisis en su orden (partida más reciente primero). Si se pasan, solo esos y en ese orden. */
+  latestIds?: string[]
 ): BlunderBankItem[] {
-  const theme = filter.theme ?? (filter.top_leak_only ? topLeakTheme(puzzles) : null);
+  const latestIndex = latestIds ? new Map(latestIds.map((id, i) => [id, i])) : null;
+  const pool = latestIndex ? puzzles.filter((p) => latestIndex.has(p.id)) : puzzles;
+  const theme = filter.theme ?? (filter.top_leak_only ? topLeakTheme(pool) : null);
   const status = filter.status ?? "all";
   const priority = (p: PuzzleProgress | undefined) => {
     if (p?.next_review_at && new Date(p.next_review_at) <= now) return 0;
     if (!p) return 1;
     return p.is_mastered ? 3 : 2;
   };
-  return puzzles
+  const byTraining = (a: BlunderBankItem, b: BlunderBankItem) =>
+    priority(progress.get(a.id)) - priority(progress.get(b.id)) ||
+    b.engine_solution.cpl - a.engine_solution.cpl ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const byAnalysis = (a: BlunderBankItem, b: BlunderBankItem) => latestIndex!.get(a.id)! - latestIndex!.get(b.id)!;
+  return pool
     .filter((item) => {
       const p = progress.get(item.id);
       if (theme && item.classification.theme !== theme) return false;
@@ -159,12 +168,7 @@ export function selectPuzzles(
       if (status === "review_due") return !!p?.next_review_at && new Date(p.next_review_at) <= now;
       return true;
     })
-    .sort(
-      (a, b) =>
-        priority(progress.get(a.id)) - priority(progress.get(b.id)) ||
-        b.engine_solution.cpl - a.engine_solution.cpl ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-    )
+    .sort(latestIndex ? byAnalysis : byTraining)
     .slice(0, filter.limit ?? 200)
     .map((item) => withProgress(item, progress.get(item.id)));
 }

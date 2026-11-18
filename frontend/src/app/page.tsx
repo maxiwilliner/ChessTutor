@@ -64,6 +64,9 @@ export default function HomePage() {
   const [gamesLimit, setGamesLimit] = useState(APP_MODE === "demo" ? 10 : 15);
   // Demo: el tiempo depende del dispositivo (se calcula tras montar para no desajustar la hidratación)
   const [durations, setDurations] = useState<Record<number, string>>({});
+  // Hasta que React toma el control, el formulario no debe enviarse (un envío HTML recargaría la página)
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   useEffect(() => {
     if (APP_MODE === "demo") setDurations(Object.fromEntries(DEMO_GAME_OPTIONS.map((n) => [n, formatDuration(estimateSeconds(n))])));
   }, []);
@@ -145,7 +148,7 @@ export default function HomePage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                start();
+                if (ready) start();
               }}
               className="space-y-5"
             >
@@ -180,6 +183,7 @@ export default function HomePage() {
                 {!isAnalyzing && (
                   <button
                     type="button"
+                    disabled={!ready}
                     onClick={() => {
                       setUsername(EXAMPLE_PLAYER.username);
                       setTimeClass(EXAMPLE_PLAYER.timeClass);
@@ -228,8 +232,8 @@ export default function HomePage() {
               </div>
 
               {!isAnalyzing && (
-                <Button type="submit" size="lg" className="w-full">
-                  Analizar mis partidas
+                <Button type="submit" size="lg" className="w-full" disabled={!ready}>
+                  {ready ? "Analizar mis partidas" : "Preparando…"}
                   <ArrowRight className="h-5 w-5" aria-hidden />
                 </Button>
               )}

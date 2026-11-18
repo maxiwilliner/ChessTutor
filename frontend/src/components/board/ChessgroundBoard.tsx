@@ -143,7 +143,7 @@ export const ChessgroundBoard: React.FC<ChessgroundBoardProps> = ({
       <div
         onAnimationEnd={onEffectEnd}
         className={cn(
-          "relative aspect-square w-full overflow-hidden rounded-xl border-[5px] border-ink-700 bg-[#a07a55] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] ring-1 ring-brass-500/20",
+          "board-skeleton relative aspect-square w-full overflow-hidden rounded-xl border-[5px] border-ink-700 bg-[#a07a55] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] ring-1 ring-brass-500/20",
           effect === "shake" && "animate-shake border-rose-500/70",
           effect === "glow" && "animate-glow border-emerald-500/70"
         )}

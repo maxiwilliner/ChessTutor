@@ -62,6 +62,7 @@ export const localStore: DataStore = {
       analysis_version: ANALYSIS_VERSION,
       summary: result.summary,
       report: result.report,
+      puzzle_ids: result.puzzles.map((p) => p.id),
       created_at: new Date().toISOString(),
     });
 
@@ -88,9 +89,11 @@ export const localStore: DataStore = {
   },
 
   async getPuzzles(username, filter) {
-    const { puzzles, progress } = await loadUser(await getLocalBackend(), username);
+    const b = await getLocalBackend();
+    const { puzzles, progress } = await loadUser(b, username);
     if (!puzzles.length) throw new Error("No hay ejercicios: analiza primero tus partidas.");
-    return selectPuzzles(puzzles, progress, filter);
+    const latestIds = filter?.scope === "all" ? undefined : (await b.getAnalysis(norm(username)))?.puzzle_ids;
+    return selectPuzzles(puzzles, progress, filter, new Date(), latestIds);
   },
 
   async getTrainerStats(username) {
