@@ -56,5 +56,8 @@ class NormalizedGame(BaseModel):
     opening_name: str = "Unknown Opening"
     end_time: int
     moves_count: int
+    # checkmate | resignation | timeout | abandoned | agreement | repetition | stalemate | insufficient
+    # | timeout_vs_insufficient | fifty_moves | other  (de la cabecera PGN "Termination")
+    termination: str = "other"
     moves: List[MoveWithClock] = []
 

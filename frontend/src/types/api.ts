@@ -50,6 +50,44 @@ export interface TacticalMotifDetail {
   description: string;
 }
 
+export type ClockBucketCode = "gt50" | "25_50" | "10_25" | "lt10";
+
+/** Jugadas según el reloj que quedaba antes de mover, en % del tiempo inicial. */
+export interface ClockBucket {
+  bucket: ClockBucketCode;
+  moves: number;
+  serious_errors: number;
+  /** % de errores graves (error + blunder). */
+  error_rate: number;
+}
+
+export interface TimeEndings {
+  games_with_clock: number;
+  /** Partidas en las que bajaste del 10 % del tiempo inicial. */
+  games_low_clock: number;
+  lost_on_time: number;
+  won_on_time: number;
+}
+
+/** % medio del tiempo inicial gastado en cada fase, por partida. */
+export interface TimeByPhase {
+  opening: number;
+  middlegame: number;
+  endgame: number;
+}
+
+export interface SpeedAccuracy {
+  moves: number;
+  accuracy: number;
+}
+
+export interface FastVsThought {
+  fast: SpeedAccuracy;
+  thought: SpeedAccuracy;
+  fast_threshold_seconds: number;
+  thought_threshold_seconds: number;
+}
+
 export interface ClockPsychology {
   blunders_under_3s_with_ample_time: number;
   blunders_in_time_trouble_under_10s: number;
@@ -57,6 +95,11 @@ export interface ClockPsychology {
   avg_time_on_blunders_seconds: number;
   avg_time_on_good_moves_seconds: number;
   blunder_time_ratio: number;
+  /** Ausentes en análisis antiguos o sin partidas con reloj. */
+  error_rate_by_clock?: ClockBucket[] | null;
+  time_endings?: TimeEndings | null;
+  time_by_phase?: TimeByPhase | null;
+  fast_vs_thought?: FastVsThought | null;
 }
 
 export interface OpeningGap {
@@ -75,6 +118,78 @@ export interface AlgorithmicFlag {
   metric_reference: string;
 }
 
+export type GameTermination =
+  | "checkmate"
+  | "resignation"
+  | "timeout"
+  | "abandoned"
+  | "agreement"
+  | "repetition"
+  | "stalemate"
+  | "insufficient"
+  | "timeout_vs_insufficient"
+  | "fifty_moves"
+  | "other";
+
+/** Una partida analizada: resultado, Elo, precisión de ambos y qué pasó con la ventaja. */
+export interface GameRecap {
+  id: string;
+  url: string;
+  end_time: number;
+  color: "white" | "black";
+  result: "win" | "loss" | "draw";
+  termination: GameTermination;
+  user_rating: number;
+  opponent_rating: number;
+  opponent_username: string;
+  eco: string;
+  opening_name: string;
+  moves_count: number;
+  user_accuracy: number | null;
+  opponent_accuracy: number | null;
+  /** Peones, desde tu perspectiva, acotado a ±10. */
+  max_eval: number;
+  min_eval: number;
+  advantage: "converted" | "drawn" | "thrown" | null;
+  disadvantage: "saved_draw" | "saved_win" | "lost" | null;
+  advantage_lost_move: number | null;
+  advantage_lost_puzzle_id: string | null;
+}
+
+export interface AdvantageStats {
+  games_with_advantage: number;
+  converted: number;
+  drawn: number;
+  thrown: number;
+  games_with_disadvantage: number;
+  saved_draw: number;
+  saved_win: number;
+  lost: number;
+}
+
+export interface VsOpponentStats {
+  games_compared: number;
+  played_better: number;
+  played_better_lost: number;
+  played_worse_won: number;
+}
+
+export interface RatingGapBucket {
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  win_rate: number;
+}
+
+export type RatingGapKey = "stronger" | "similar" | "weaker";
+
+export interface GameStats {
+  advantage: AdvantageStats;
+  vs_opponent: VsOpponentStats;
+  by_rating_gap: Record<RatingGapKey, RatingGapBucket>;
+}
+
 export interface PlayerDiagnosisSummary {
   player: PlayerMeta;
   overall_metrics: OverallMetrics;
@@ -84,6 +199,9 @@ export interface PlayerDiagnosisSummary {
   clock_psychology: ClockPsychology;
   opening_repertoire_gaps: OpeningGap[];
   top_3_algorithmic_flags: AlgorithmicFlag[];
+  /** Ausentes en análisis antiguos. `games` lleva nombres de rivales: nunca va al LLM. */
+  game_stats?: GameStats | null;
+  games?: GameRecap[] | null;
   /** Solo demo: "low_power" si el análisis se hizo con profundidad reducida (móvil o equipo modesto). */
   engine_profile?: "standard" | "low_power";
 }

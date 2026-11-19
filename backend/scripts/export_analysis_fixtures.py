@@ -41,8 +41,15 @@ def anonymize(pgn: str, username: str, index: int, opponents: dict) -> str:
     fake_url = f"https://www.chess.com/game/live/{1000000 + index}"
     pgn = re.sub(r'\[Link "[^"]*"\]', f'[Link "{fake_url}"]', pgn)
     pgn = re.sub(r'\[Site "[^"]*"\]', '[Site "Chess.com"]', pgn)
-    # Termination names the players ("x won by checkmate") and the parser does not use it
-    pgn = re.sub(r'\[Termination "[^"]*"\]\n?', '', pgn)
+    # Termination names the winner ("x won on time"): keep the wording, swap the names for the aliases
+    def swap_termination(match: re.Match) -> str:
+        text = match.group(1)
+        names = [(username, PLAYER)] + [(real, alias) for real, alias in opponents.items()]
+        for real, alias in sorted(names, key=lambda n: -len(n[0])):
+            text = re.sub(re.escape(real), alias, text, flags=re.IGNORECASE)
+        return f'[Termination "{text}"]'
+
+    pgn = re.sub(r'\[Termination "([^"]*)"\]', swap_termination, pgn)
     return pgn
 
 

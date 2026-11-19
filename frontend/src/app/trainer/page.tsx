@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, Suspense } from "react";
+import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { GetPuzzlesFilter } from "@/lib/api";
@@ -43,6 +43,9 @@ function TrainerContent() {
   const rawParam = searchParams.get("username") || "";
   const modeParam = searchParams.get("mode") as TrainerMode | null;
   const themeParam = searchParams.get("theme");
+  // ?puzzle=<id> (desde "Ver el error" del diagnóstico): abrir ese ejercicio, buscándolo en todo el banco
+  const puzzleParam = searchParams.get("puzzle");
+  const focusPuzzle = useRef<string | null>(puzzleParam);
   const [lastUser, saveLastUser] = useLastUsername();
 
   const [username, setUsername] = useState<string>(rawParam);
@@ -60,7 +63,7 @@ function TrainerContent() {
   const [selectedTheme, setSelectedTheme] = useState<string>(themeParam || "hanging_piece");
   const [onlyReviewDue, setOnlyReviewDue] = useState(false);
   // Por defecto, los ejercicios del último análisis (los repasos programados miran todo el banco)
-  const [scope, setScope] = useState<"latest" | "all">("latest");
+  const [scope, setScope] = useState<"latest" | "all">(puzzleParam ? "all" : "latest");
 
   const [session, updateSession] = useSessionStats(username);
   const { streak: sessionStreak, attempts: sessionAttempts, firstTry: sessionFirstTryCount, avoided: sessionBlundersAvoided } = session;
@@ -109,8 +112,10 @@ function TrainerContent() {
       if (onlyReviewDue) filter.status = "review_due";
       filter.scope = onlyReviewDue ? "all" : scope;
 
-      setPuzzles(await store.getPuzzles(username, filter));
-      setCurrentIndex(0);
+      const list = await store.getPuzzles(username, filter);
+      setPuzzles(list);
+      const focus = focusPuzzle.current ? list.findIndex((p) => p.id === focusPuzzle.current) : -1;
+      setCurrentIndex(focus >= 0 ? focus : 0);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se encontraron ejercicios con este filtro.");
       setPuzzles([]);
@@ -118,6 +123,16 @@ function TrainerContent() {
       setLoading(false);
     }
   }, [username, activeMode, selectedTheme, onlyReviewDue, scope]);
+
+  // Si el usuario cambia de filtro, deja de saltar al ejercicio pedido por la URL
+  const filterKey = `${activeMode}|${selectedTheme}|${onlyReviewDue}|${scope}`;
+  const lastFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilterKey.current !== filterKey) {
+      lastFilterKey.current = filterKey;
+      focusPuzzle.current = null;
+    }
+  }, [filterKey]);
 
   useEffect(() => {
     if (username) {

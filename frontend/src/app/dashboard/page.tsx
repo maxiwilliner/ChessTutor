@@ -13,6 +13,8 @@ import { ClockVsErrorChart } from "@/components/charts/ClockVsErrorChart";
 import { OpeningStatsTable } from "@/components/charts/OpeningStatsTable";
 import { WeaknessMap } from "@/components/charts/WeaknessMap";
 import { AccuracyRing } from "@/components/charts/AccuracyRing";
+import { GamesOverview } from "@/components/charts/GamesOverview";
+import { APP_MODE } from "@/lib/mode";
 import { Card, Skeleton } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
@@ -21,12 +23,16 @@ import { TIME_CLASS_LABEL } from "@/lib/labels";
 import { useLastUsername } from "@/lib/useLastUsername";
 import { Target, ArrowRight, TrendingUp, Flame, AlertOctagon, Gauge, UserRound, RefreshCw, ExternalLink } from "lucide-react";
 
+const IS_DEMO = APP_MODE === "demo";
+
+// En la demo no hay plan de entrenamiento: el diagnóstico es más corto
 const SECTIONS = [
   { id: "diagnostico", label: "Diagnóstico" },
+  { id: "partidas", label: "Partidas" },
   { id: "debilidades", label: "Debilidades" },
   { id: "reloj", label: "Reloj" },
   { id: "aperturas", label: "Aperturas" },
-  { id: "plan", label: "Plan" },
+  ...(IS_DEMO ? [] : [{ id: "plan", label: "Plan" }]),
 ];
 
 function DashboardContent() {
@@ -237,7 +243,12 @@ function DashboardContent() {
           overview={tutor.overview}
           mentalTip={tutor.mental_game_tip}
           username={p.username}
+          compact={IS_DEMO}
         />
+      </div>
+
+      <div id="partidas" className="scroll-mt-32">
+        <GamesOverview stats={summary.game_stats} games={summary.games} username={p.username} />
       </div>
 
       <div id="debilidades" className="scroll-mt-32">
@@ -252,9 +263,11 @@ function DashboardContent() {
         <OpeningStatsTable openings={summary.opening_repertoire_gaps} />
       </div>
 
-      <div id="plan" className="scroll-mt-32">
-        <StudyPlanCard plan={tutor.weekly_plan} username={p.username} />
-      </div>
+      {!IS_DEMO && (
+        <div id="plan" className="scroll-mt-32">
+          <StudyPlanCard plan={tutor.weekly_plan} username={p.username} />
+        </div>
+      )}
 
       {/* Cierre */}
       <Card tone="inset" className="flex flex-col items-center gap-4 p-8 text-center">

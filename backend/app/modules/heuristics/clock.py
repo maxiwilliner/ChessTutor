@@ -1,6 +1,16 @@
 from typing import List, Literal
-from backend.app.models.diagnosis import ClockPsychology
+from backend.app.models.chesscom import NormalizedGame
+from backend.app.models.diagnosis import (
+    ClockBucket,
+    ClockPsychology,
+    FastVsThought,
+    SpeedAccuracy,
+    TimeByPhase,
+    TimeEndings,
+)
 from backend.app.models.engine import EvaluatedMove
+from backend.app.modules.chesscom.parser import parse_time_control
+from backend.app.modules.engine.scoring import move_accuracy
 
 PsychTag = Literal["impulsive", "time_trouble", "normal"]
 
@@ -71,3 +81,95 @@ def analyze_clock_psychology(moves: List[EvaluatedMove]) -> ClockPsychology:
         avg_time_on_good_moves_seconds=avg_good_time,
         blunder_time_ratio=blunder_time_ratio,
     )
+
+
+# Tramos del reloj antes de mover (fracción del tiempo inicial): (código, mínimo incluido)
+CLOCK_BUCKETS = [("gt50", 0.5), ("25_50", 0.25), ("10_25", 0.10), ("lt10", 0.0)]
+LOW_CLOCK_FRACTION = 0.10
+# Las primeras jugadas son teoría: rápidas y buenas, sesgarían "rápidas vs pensadas".
+SKIP_OPENING_MOVES = 8
+
+
+def thought_move_threshold(base_time: float) -> float:
+    """Jugada "pensada": al menos el 3 % del tiempo inicial (entre 5 y 60 s)."""
+    return min(60.0, max(5.0, 0.03 * _base(base_time)))
+
+
+def _mean_or_zero(xs: List[float], digits: int = 1) -> float:
+    return round(sum(xs) / len(xs), digits) if xs else 0.0
+
+
+def analyze_clock_usage(games: List[NormalizedGame], evaluated_games_moves: List[List[EvaluatedMove]]) -> dict:
+    """
+    Cifras del reloj que necesitan el tiempo inicial de cada partida (se ignoran las que no lo tienen, p. ej. diarias):
+    errores por tramo de reloj, finales por tiempo, tiempo por fase y precisión de jugadas rápidas frente a pensadas.
+    """
+    buckets = {code: [0, 0] for code, _ in CLOCK_BUCKETS}  # [jugadas, errores graves]
+    phase_pct = {"opening": [], "middlegame": [], "endgame": []}
+    fast_acc: List[float] = []
+    thought_acc: List[float] = []
+    games_with_clock = games_low = lost_on_time = won_on_time = 0
+    fast_limit = thought_limit = None
+
+    for game, moves in zip(games, evaluated_games_moves):
+        base, inc = parse_time_control(game.time_control)
+        if base <= 0 or not moves:
+            continue
+        games_with_clock += 1
+        if game.termination == "timeout":
+            if game.user_result == "loss":
+                lost_on_time += 1
+            elif game.user_result == "win":
+                won_on_time += 1
+        if any(m.clock_remaining_seconds < LOW_CLOCK_FRACTION * base for m in moves):
+            games_low += 1
+
+        spent = {"opening": 0.0, "middlegame": 0.0, "endgame": 0.0}
+        f_lim, t_lim = impulsive_move_threshold(base), thought_move_threshold(base)
+        fast_limit = f_lim if fast_limit is None else fast_limit
+        thought_limit = t_lim if thought_limit is None else thought_limit
+        for m in moves:
+            spent[m.phase] += m.time_spent_seconds
+            before = (m.clock_remaining_seconds + m.time_spent_seconds - inc) / base
+            for code, low in CLOCK_BUCKETS:
+                if before >= low:
+                    buckets[code][0] += 1
+                    if m.classification in ("blunder", "error"):
+                        buckets[code][1] += 1
+                    break
+            if m.move_number > SKIP_OPENING_MOVES:
+                acc = move_accuracy(m.eval_before_cp, m.eval_after_cp)
+                if m.time_spent_seconds <= f_lim:
+                    fast_acc.append(acc)
+                elif m.time_spent_seconds >= t_lim:
+                    thought_acc.append(acc)
+        for ph in spent:
+            phase_pct[ph].append(spent[ph] / base * 100.0)
+
+    if not games_with_clock:
+        return {}
+
+    return {
+        "error_rate_by_clock": [
+            ClockBucket(
+                bucket=code,
+                moves=buckets[code][0],
+                serious_errors=buckets[code][1],
+                error_rate=round(buckets[code][1] / buckets[code][0] * 100.0, 1) if buckets[code][0] else 0.0,
+            )
+            for code, _ in CLOCK_BUCKETS
+        ],
+        "time_endings": TimeEndings(
+            games_with_clock=games_with_clock,
+            games_low_clock=games_low,
+            lost_on_time=lost_on_time,
+            won_on_time=won_on_time,
+        ),
+        "time_by_phase": TimeByPhase(**{ph: _mean_or_zero(v) for ph, v in phase_pct.items()}),
+        "fast_vs_thought": FastVsThought(
+            fast=SpeedAccuracy(moves=len(fast_acc), accuracy=_mean_or_zero(fast_acc)),
+            thought=SpeedAccuracy(moves=len(thought_acc), accuracy=_mean_or_zero(thought_acc)),
+            fast_threshold_seconds=round(fast_limit or 0.0, 1),
+            thought_threshold_seconds=round(thought_limit or 0.0, 1),
+        ),
+    }

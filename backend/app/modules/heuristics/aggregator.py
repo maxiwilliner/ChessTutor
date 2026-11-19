@@ -28,7 +28,8 @@ from backend.app.models.puzzles import (
 from backend.app.modules.chesscom.parser import parse_time_control
 from backend.app.modules.engine.scoring import clamp_cp, move_accuracy
 from backend.app.modules.heuristics.tactical import classify_tactical_motif
-from backend.app.modules.heuristics.clock import tag_move_psychology, analyze_clock_psychology
+from backend.app.modules.heuristics.clock import tag_move_psychology, analyze_clock_psychology, analyze_clock_usage
+from backend.app.modules.heuristics.games import build_game_recap, build_game_stats
 
 def game_accuracy(moves: List[EvaluatedMove]) -> float:
     """
@@ -258,6 +259,7 @@ def assemble_diagnosis_and_puzzles(
 
     # 4. Clock psychology
     clock_stats = analyze_clock_psychology(all_user_moves)
+    clock_stats = clock_stats.model_copy(update=analyze_clock_usage(games, evaluated_games_moves))
 
     # 5. Opening repertoire gaps
     eco_games = defaultdict(list)
@@ -365,6 +367,10 @@ def assemble_diagnosis_and_puzzles(
     # Take top 3 flags
     top_3_flags = flags[:3]
 
+    # 7. Partidas: Elo, precisión de ambos y conversión de ventaja
+    puzzle_ids = {b.id for b in blunder_items}
+    recaps = [build_game_recap(g, moves, puzzle_ids) for g, moves in zip(games, evaluated_games_moves)]
+
     current_elo = games[0].white_rating if games[0].user_color == "white" else games[0].black_rating
 
     summary = PlayerDiagnosisSummary(
@@ -392,7 +398,9 @@ def assemble_diagnosis_and_puzzles(
         tactical_motifs=tactical_motifs,
         clock_psychology=clock_stats,
         opening_repertoire_gaps=opening_gaps,
-        top_3_algorithmic_flags=top_3_flags
+        top_3_algorithmic_flags=top_3_flags,
+        game_stats=build_game_stats(recaps),
+        games=recaps,
     )
 
     return summary, blunder_items

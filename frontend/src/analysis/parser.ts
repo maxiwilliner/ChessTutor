@@ -1,6 +1,6 @@
 /** Port de `backend/app/modules/chesscom/parser.py`. */
 import { Chess } from "chess.js";
-import type { Color, MoveWithClock, NormalizedGame } from "./types";
+import type { Color, MoveWithClock, NormalizedGame, Termination } from "./types";
 import { pyRound } from "./scoring";
 
 const CLK_PATTERN = /\[%clk\s+([0-9:.]+)\]/;
@@ -60,6 +60,27 @@ function commentsPerPly(pgn: string): (string | null)[] {
     }
   }
   return out;
+}
+
+// Orden importante: "timeout vs insufficient material" antes que "on time" e "insufficient".
+const TERMINATIONS: [string, Termination][] = [
+  ["timeout vs insufficient", "timeout_vs_insufficient"],
+  ["on time", "timeout"],
+  ["checkmate", "checkmate"],
+  ["resignation", "resignation"],
+  ["abandoned", "abandoned"],
+  ["agreement", "agreement"],
+  ["repetition", "repetition"],
+  ["stalemate", "stalemate"],
+  ["insufficient", "insufficient"],
+  ["50-move", "fifty_moves"],
+  ["50 move", "fifty_moves"],
+];
+
+/** Port de `parse_termination`: "X won on time" -> "timeout". */
+export function parseTermination(text: string): Termination {
+  const t = text.toLowerCase();
+  return TERMINATIONS.find(([needle]) => t.includes(needle))?.[1] ?? "other";
 }
 
 export function parseGamePgn(pgn: string, targetUsername: string): NormalizedGame | null {
@@ -142,5 +163,6 @@ export function parseGamePgn(pgn: string, targetUsername: string): NormalizedGam
     end_time: endTime,
     moves_count: moves.length,
     moves,
+    termination: parseTermination(headers["Termination"] ?? ""),
   };
 }

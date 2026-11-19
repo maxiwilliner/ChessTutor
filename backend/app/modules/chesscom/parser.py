@@ -93,6 +93,31 @@ def _parse_end_time(headers) -> int:
     return 0
 
 
+# Orden importante: "timeout vs insufficient material" antes que "on time" e "insufficient".
+_TERMINATIONS = [
+    ("timeout vs insufficient", "timeout_vs_insufficient"),
+    ("on time", "timeout"),
+    ("checkmate", "checkmate"),
+    ("resignation", "resignation"),
+    ("abandoned", "abandoned"),
+    ("agreement", "agreement"),
+    ("repetition", "repetition"),
+    ("stalemate", "stalemate"),
+    ("insufficient", "insufficient"),
+    ("50-move", "fifty_moves"),
+    ("50 move", "fifty_moves"),
+]
+
+
+def parse_termination(text: str) -> str:
+    """Cómo terminó la partida según la cabecera Termination de Chess.com ("X won on time", "Game drawn by repetition")."""
+    t = (text or "").lower()
+    for needle, code in _TERMINATIONS:
+        if needle in t:
+            return code
+    return "other"
+
+
 def parse_game_pgn(pgn_text: str, target_username: str) -> Optional[NormalizedGame]:
     """
     Parses a single PGN string from Chess.com into a NormalizedGame model,
@@ -218,6 +243,7 @@ def parse_game_pgn(pgn_text: str, target_username: str) -> Optional[NormalizedGa
         opening_name=opening_name,
         end_time=end_time_int,
         moves_count=len(moves_list),
+        termination=parse_termination(headers.get("Termination", "")),
         moves=moves_list
     )
 

@@ -171,6 +171,11 @@ def generate_deterministic_tutor_report(summary: PlayerDiagnosisSummary) -> Tuto
     )
 
 
+def llm_payload(summary: PlayerDiagnosisSummary) -> str:
+    """JSON que ve el LLM: el resumen agregado, sin la lista de partidas (lleva nombres de rivales)."""
+    return summary.model_dump_json(indent=2, exclude={"games"})
+
+
 async def generate_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagogicalReport:
     """
     Generates a personalized pedagogical report.
@@ -182,7 +187,7 @@ async def generate_tutor_report(summary: PlayerDiagnosisSummary) -> TutorPedagog
     if openai_key:
         try:
             logger.info("Generating report with OpenAI LLM...")
-            prompt = build_user_prompt(summary.model_dump_json(indent=2))
+            prompt = build_user_prompt(llm_payload(summary))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
                     "https://api.openai.com/v1/chat/completions",

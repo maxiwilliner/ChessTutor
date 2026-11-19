@@ -7,6 +7,18 @@
 export type Color = "white" | "black";
 export type Classification = "best" | "good" | "inaccuracy" | "error" | "blunder";
 export type Phase = "opening" | "middlegame" | "endgame";
+export type Termination =
+  | "checkmate"
+  | "resignation"
+  | "timeout"
+  | "abandoned"
+  | "agreement"
+  | "repetition"
+  | "stalemate"
+  | "insufficient"
+  | "timeout_vs_insufficient"
+  | "fifty_moves"
+  | "other";
 export type PsychTag = "impulsive" | "time_trouble" | "normal";
 
 export interface MoveWithClock {
@@ -39,6 +51,8 @@ export interface NormalizedGame {
   end_time: number;
   moves_count: number;
   moves: MoveWithClock[];
+  /** Cómo terminó (cabecera PGN Termination): checkmate, resignation, timeout... */
+  termination: Termination;
 }
 
 /** Evaluación de una posición. score_cp desde el punto de vista de las blancas; mate = ±(10000 − 100·n). */

@@ -11,7 +11,8 @@ import type { EvaluatedMove, NormalizedGame, Phase } from "./types";
 import { parseTimeControl } from "./parser";
 import { clampCp, moveAccuracy, pyRound } from "./scoring";
 import { classifyTacticalMotif } from "./tactical";
-import { analyzeClockPsychology, tagMovePsychology } from "./clock";
+import { analyzeClockPsychology, analyzeClockUsage, tagMovePsychology } from "./clock";
+import { buildGameRecap, buildGameStats } from "./games";
 import { generateHintsForBlunder } from "./hints";
 import { pyFixed0, pyFloat } from "./format";
 
@@ -171,7 +172,7 @@ export function assembleDiagnosisAndPuzzles(
   }
 
   // 4. Reloj
-  const clock = analyzeClockPsychology(all);
+  const clock = { ...analyzeClockPsychology(all), ...analyzeClockUsage(games, evaluatedGamesMoves) };
 
   // 5. Aperturas
   const groups = new Map<string, { eco: string; name: string; color: NormalizedGame["user_color"]; items: [NormalizedGame, EvaluatedMove[]][] }>();
@@ -252,6 +253,10 @@ export function assembleDiagnosisAndPuzzles(
     });
   }
 
+  // 7. Partidas: Elo, precisión de ambos y conversión de ventaja
+  const puzzleIds = new Set(puzzles.map((p) => p.id));
+  const recaps = games.map((g, gi) => buildGameRecap(g, evaluatedGamesMoves[gi], puzzleIds));
+
   const g0 = games[0];
   const summary: PlayerDiagnosisSummary = {
     player: {
@@ -279,6 +284,8 @@ export function assembleDiagnosisAndPuzzles(
     clock_psychology: clock,
     opening_repertoire_gaps: openingGaps,
     top_3_algorithmic_flags: flags.slice(0, 3),
+    game_stats: buildGameStats(recaps),
+    games: recaps,
   };
   return { summary, puzzles };
 }
