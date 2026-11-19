@@ -135,6 +135,7 @@ function DashboardContent() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 {profile?.title && <Badge tone="brass">{profile.title}</Badge>}
+                {isExampleUser(p.username) && <Badge tone="violet">Ejemplo</Badge>}
                 <Badge>{TIME_CLASS_LABEL[p.time_class] ?? p.time_class}</Badge>
                 <Badge>{p.games_analyzed} partidas</Badge>
                 {summary.engine_profile === "low_power" && (

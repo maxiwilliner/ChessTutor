@@ -14,13 +14,14 @@ describe("cliente de Chess.com en el navegador", () => {
     let calls = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       calls++;
-      if (calls <= 2) throw new TypeError("Load failed");
+      if (url.endsWith("/stats")) return json({ chess_rapid: { record: { win: 1 } } });
+      if (calls <= 3) throw new TypeError("Load failed");
       if (url.endsWith("/archives")) return json({ archives: ["https://api.chess.com/pub/player/me/games/2026/10"] });
       return json({ games: [{ time_class: "rapid", rules: "chess", pgn: PGN("demo_me", "you"), end_time: 1 }] });
     }));
     const games = await getRecentGames("demo_me", "rapid", 5);
     expect(games).toHaveLength(1);
-    expect(calls).toBe(4);
+    expect(calls).toBe(5); // stats + 2 fallos + archivos + mes
   });
 
   it("tras agotar los reintentos da un error claro", async () => {
@@ -35,6 +36,7 @@ describe("cliente de Chess.com en el navegador", () => {
     const requested: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       requested.push(url);
+      if (url.endsWith("/stats")) return json({ chess_rapid: { record: { win: 3, loss: 2 } } });
       if (url.endsWith("/archives")) return json({ archives: months });
       const m = Number(url.slice(-2));
       // Solo los meses 7 y 3 tienen partidas rápidas estándar; el 6 tiene una de Chess960
@@ -48,8 +50,34 @@ describe("cliente de Chess.com en el navegador", () => {
     const games = await getRecentGames("demo_me", "rapid", 2, undefined, (label) => seen.push(label));
     expect(games.map((g) => g.black_username)).toEqual(["m7", "m3"]);
     // Dos lotes de 3 meses (7-6-5 y 4-3-2): el mes 1 no hace falta
-    expect(requested.filter((u) => !u.endsWith("/archives"))).toHaveLength(2 * MONTHS_PER_BATCH);
+    expect(requested.filter((u) => u.includes("/games/2026/"))).toHaveLength(2 * MONTHS_PER_BATCH);
     expect(seen).toEqual(["may 2026", "feb 2026"]);
+  });
+
+  it("sin partidas puntuadas del ritmo solo mira los 3 meses más recientes", async () => {
+    const months = Array.from({ length: 12 }, (_, i) => `https://api.chess.com/pub/player/me/games/2026/${String(i + 1).padStart(2, "0")}`);
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      requested.push(url);
+      if (url.endsWith("/stats")) return json({ chess_blitz: { record: { win: 10 } } });
+      if (url.endsWith("/archives")) return json({ archives: months });
+      return json({ games: [{ time_class: "blitz", rules: "chess", pgn: PGN("demo_me", "b") }] });
+    }));
+    expect(await getRecentGames("demo_me", "rapid", 5)).toEqual([]);
+    expect(requested.filter((u) => u.includes("/games/2026/"))).toHaveLength(MONTHS_PER_BATCH);
+  });
+
+  it("si /stats falla se recorre el historial como siempre", async () => {
+    const months = Array.from({ length: 6 }, (_, i) => `https://api.chess.com/pub/player/me/games/2026/${String(i + 1).padStart(2, "0")}`);
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      requested.push(url);
+      if (url.endsWith("/stats")) return json({}, 503);
+      if (url.endsWith("/archives")) return json({ archives: months });
+      return json({ games: [] });
+    }));
+    expect(await getRecentGames("demo_me", "rapid", 5)).toEqual([]);
+    expect(requested.filter((u) => u.includes("/games/2026/"))).toHaveLength(6);
   });
 
   it("etiqueta de mes", () => {

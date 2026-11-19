@@ -8,6 +8,8 @@ import { APP_MODE } from "@/lib/mode";
 import { EXAMPLE_PLAYER, isExampleUser } from "@/lib/example";
 import { estimateSeconds, formatDuration } from "@/analysis/device";
 import { useLastUsername } from "@/lib/useLastUsername";
+import { useKeepAwake } from "@/lib/useKeepAwake";
+import { reportError } from "@/lib/telemetry";
 import { DemoBoard } from "@/components/board/DemoBoard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -81,6 +83,24 @@ export default function HomePage() {
   }, []);
 
   const isAnalyzing = progress !== null && !errorMessage;
+  const [loadingExample, setLoadingExample] = useState(false);
+  useKeepAwake(isAnalyzing && progress?.stage !== "complete");
+
+  /** Demo: el ejemplo ya viene analizado (carga al instante); si no está disponible, se analiza en vivo. */
+  const tryExample = async () => {
+    setUsername(EXAMPLE_PLAYER.username);
+    setTimeClass(EXAMPLE_PLAYER.timeClass);
+    if (store.loadExample) {
+      setLoadingExample(true);
+      const ok = await store.loadExample(EXAMPLE_PLAYER.username, EXAMPLE_PLAYER.timeClass);
+      setLoadingExample(false);
+      if (ok) {
+        router.push(`/dashboard?username=${encodeURIComponent(EXAMPLE_PLAYER.username)}`);
+        return;
+      }
+    }
+    start(EXAMPLE_PLAYER);
+  };
 
   const start = (override?: { username: string; timeClass: string }) => {
     const cleanUser = (override?.username ?? username).trim();
@@ -117,6 +137,11 @@ export default function HomePage() {
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setErrorMessage(err instanceof Error ? err.message : "Error inesperado durante el análisis.");
+        // Errores del usuario (nombre mal escrito, sin partidas) no son fallos de la app
+        const kind = (err as { kind?: string } | null)?.kind ?? (err as Error | null)?.name ?? "unknown";
+        if (!["not_found", "invalid_username", "AnalysisError", "AnalysisLocked"].includes(kind)) {
+          reportError(err, { where: "analysis", kind, time_class: tc, games: String(gamesLimit) });
+        }
       });
   };
 
@@ -186,12 +211,8 @@ export default function HomePage() {
                 {!isAnalyzing && (
                   <button
                     type="button"
-                    disabled={!ready}
-                    onClick={() => {
-                      setUsername(EXAMPLE_PLAYER.username);
-                      setTimeClass(EXAMPLE_PLAYER.timeClass);
-                      start(EXAMPLE_PLAYER);
-                    }}
+                    disabled={!ready || loadingExample}
+                    onClick={() => void tryExample()}
                     className="mt-2 block text-xs text-ivory-faint hover:text-brass-300"
                   >
                     ¿No juegas en Chess.com? <span className="font-semibold text-ivory-muted underline-offset-2 hover:underline">Prueba con las partidas blitz de Hikaru</span>
@@ -373,6 +394,12 @@ function AnalysisProgress({
           />
         </div>
       </div>
+
+      {APP_MODE === "demo" && progress.stage !== "complete" && !error && (
+        <p className="text-xs text-ivory-faint">
+          Mantén esta pestaña abierta y la pantalla encendida: si cambias de app, el móvil pausa el análisis.
+        </p>
+      )}
 
       {progress.stage !== "complete" && (
         <button type="button" onClick={onCancel} className="flex items-center gap-1 text-xs text-ivory-faint hover:text-ivory">

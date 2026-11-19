@@ -40,6 +40,8 @@ export interface LocalBackend {
   putProgress(p: PuzzleProgress): Promise<void>;
   evalGetMany(keys: string[]): Promise<Map<string, PositionEvaluation>>;
   evalSetMany(entries: [string, PositionEvaluation][]): Promise<void>;
+  /** Vacía la caché de evaluaciones (p. ej. si el disco se llena). */
+  evalClear(): Promise<void>;
   exportAll(): Promise<{ analyses: StoredAnalysis[]; puzzles: StoredPuzzle[]; progress: PuzzleProgress[] }>;
   clear(): Promise<void>;
 }
@@ -72,6 +74,7 @@ export function memoryBackend(): LocalBackend {
         evals.delete(k);
       }
     },
+    evalClear: async () => evals.clear(),
     exportAll: async () => ({ analyses: [...analyses.values()], puzzles: [...puzzles.values()], progress: [...progress.values()] }),
     clear: async () => {
       analyses.clear();
@@ -134,6 +137,9 @@ function idbBackend(db: IDBPDatabase<DemoDB>): LocalBackend {
         }
       }
       await tx.done;
+    },
+    evalClear: async () => {
+      await db.clear("evals");
     },
     exportAll: async () => {
       const [analyses, puzzles, progress] = await Promise.all([db.getAll("analyses"), db.getAll("puzzles"), db.getAll("progress")]);

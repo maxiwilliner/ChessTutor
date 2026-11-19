@@ -25,7 +25,9 @@ export interface AnalysisResult {
   report: TutorPedagogicalReport;
 }
 
-export class AnalysisError extends Error {}
+export class AnalysisError extends Error {
+  override name = "AnalysisError";
+}
 
 const PACE_ES: Record<string, string> = { rapid: "rápidas", blitz: "de blitz", bullet: "de bullet", daily: "diarias" };
 
@@ -50,7 +52,7 @@ export async function runAnalysis(opts: {
     emit({ stage: "fetching_games", message: `Buscando partidas de ${username} en ${month}...`, progress_pct: 5 })
   );
   if (!games.length) {
-    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} en Chess.com en los últimos 3 años. Prueba con otro ritmo.`);
+    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} recientes en Chess.com. Prueba con otro ritmo.`);
   }
 
   const total = games.length;

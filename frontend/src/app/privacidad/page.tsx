@@ -60,6 +60,11 @@ export default function PrivacyPage() {
             No usamos cookies de seguimiento ni publicidad. Podemos medir visitas de forma agregada y anónima con Cloudflare Web Analytics,
             que no usa cookies ni identifica a personas.
           </p>
+          <p>
+            Si algo falla (por ejemplo, el motor no arranca en tu navegador), podemos recibir un informe técnico anónimo con el error, el
+            navegador y el número de núcleos del dispositivo, a través de Sentry. Antes de enviarlo borramos los nombres de usuario; no
+            incluye tus partidas, cookies ni tu dirección IP.
+          </p>
         </Section>
 
         <Section title="Cómo borrar tus datos">

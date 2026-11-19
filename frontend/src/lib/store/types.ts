@@ -38,4 +38,6 @@ export interface DataStore {
   getTrainerStats(username: string, scope?: "latest" | "all"): Promise<TrainerStatsResponse>;
   submitAttempt(req: PuzzleAttemptRequest): Promise<PuzzleAttemptResponse | null>;
   evaluateMove(puzzle: BlunderBankItem, playedUci: string, fen: string): Promise<EvaluateMoveResponse>;
+  /** Solo demo: carga un análisis de ejemplo ya hecho. `false` si no hay o está desfasado (entonces se analiza en vivo). */
+  loadExample?(username: string, timeClass: string): Promise<boolean>;
 }

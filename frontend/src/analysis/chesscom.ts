@@ -92,6 +92,14 @@ interface RawGame {
   end_time?: number;
 }
 
+type PlayerStats = Record<string, { record?: { win?: number; loss?: number; draw?: number } } | undefined>;
+
+/** Partidas puntuadas del ritmo según /stats (`chess_rapid`, `chess_blitz`...). */
+export function ratedGames(stats: PlayerStats, timeClass: string): number {
+  const r = stats[`chess_${timeClass}`]?.record;
+  return r ? (r.win ?? 0) + (r.loss ?? 0) + (r.draw ?? 0) : 0;
+}
+
 /** Meses que se piden a la vez y tope de meses hacia atrás. */
 export const MONTHS_PER_BATCH = 3;
 export const MAX_MONTHS = 36;
@@ -116,9 +124,18 @@ export async function getRecentGames(
 ): Promise<NormalizedGame[]> {
   checkUsername(username);
   const user = username.toLowerCase();
-  const index = await getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal);
+  // Las estadísticas (en paralelo, sin coste de latencia) dicen si hay partidas puntuadas de ese ritmo. Si no hay,
+  // solo se mira el lote más reciente: las no puntuadas no cuentan en /stats, pero no merece recorrer 3 años de archivos.
+  const [stats, index] = await Promise.all([
+    getJson<PlayerStats>(`${BASE}/player/${user}/stats`, signal).catch((e) => {
+      if ((e as Error).name === "AbortError") throw e;
+      return null;
+    }),
+    getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal),
+  ]);
   if (!index) throw new ChessComError(`No existe el usuario «${username}» en Chess.com. Revisa cómo se escribe.`, "not_found");
-  const months = [...(index.archives ?? [])].reverse().slice(0, MAX_MONTHS);
+  const maxMonths = stats && timeClass && ratedGames(stats, timeClass) === 0 ? MONTHS_PER_BATCH : MAX_MONTHS;
+  const months = [...(index.archives ?? [])].reverse().slice(0, maxMonths);
   const games: NormalizedGame[] = [];
   for (let i = 0; i < months.length; i += MONTHS_PER_BATCH) {
     const batch = months.slice(i, i + MONTHS_PER_BATCH);

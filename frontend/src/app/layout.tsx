@@ -9,6 +9,7 @@ import { APP_MODE } from "@/lib/mode";
 import { CF_ANALYTICS_TOKEN, SITE_URL } from "@/lib/site";
 import { FeedbackLink } from "@/components/layout/FeedbackLink";
 import Script from "next/script";
+import { Telemetry } from "@/components/layout/Telemetry";
 
 const TAGLINE =
   "Analiza tus partidas de Chess.com con Stockfish, descubre las 3 fugas que más Elo te cuestan y entrena las posiciones exactas donde fallaste.";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="es" className={`dark ${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="flex min-h-screen flex-col text-ivory">
+        <Telemetry />
         <a
           href="#contenido"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brass-400 focus:px-3 focus:py-2 focus:text-ink-950"
