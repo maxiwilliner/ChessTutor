@@ -7,7 +7,9 @@ import { Chess } from "chess.js";
 import { BlunderBankItem, EvaluateMoveResponse } from "@/types/api";
 import { store } from "@/lib/store";
 import { cn } from "@/lib/cn";
-import { PHASE_LABEL, PSYCH_LABEL, themeMeta } from "@/lib/labels";
+import { themeMeta } from "@/lib/labels";
+import { useI18n } from "@/lib/i18n";
+import { generateHintsForBlunder } from "@/analysis/hints";
 import { alternating, buildLine, type LineFrame, type LineStep } from "@/lib/lineViewer";
 import { playMoveSound, sound } from "@/lib/sound";
 import { ChessgroundBoard, BoardEffect } from "./ChessgroundBoard";
@@ -85,13 +87,15 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   onPrev,
   onAttemptFinished,
 }) => {
+  const { m, lang } = useI18n();
+  const t = m.trainer.replay;
   const isUserWhite = puzzle.metadata.user_color === "white";
   const orientation: "white" | "black" = puzzle.metadata.user_color || puzzle.turn || "white";
-  const opponentName = (isUserWhite ? puzzle.metadata.black : puzzle.metadata.white) || "Rival";
-  const userColorLabel = isUserWhite ? "Blancas" : "Negras";
-  const opponentColorLabel = isUserWhite ? "Negras" : "Blancas";
+  const opponentName = (isUserWhite ? puzzle.metadata.black : puzzle.metadata.white) || t.opponent;
+  const userColorLabel = isUserWhite ? t.white : t.black;
+  const opponentColorLabel = isUserWhite ? t.black : t.white;
   const isImpulsive = puzzle.classification.psychological_tag === "impulsive";
-  const theme = themeMeta(puzzle.classification.theme);
+  const theme = themeMeta(puzzle.classification.theme, m);
   const toWhite = useCallback((playerPawns: number) => (isUserWhite ? playerPawns : -playerPawns), [isUserWhite]);
   const moveLabel = `${puzzle.move_number}${puzzle.turn === "black" ? "..." : "."}`;
   const solutionUci = puzzle.engine_solution.pv_uci?.length ? puzzle.engine_solution.pv_uci : [puzzle.engine_solution.best_move_uci];
@@ -186,7 +190,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
     if (practicing) {
       // Ya se registró el intento al ver la solución: practicar no cambia el repaso.
-      setFeedback({ type: "success", message: "¡Bien hecho! Ya conoces la idea: volverá en tu próximo repaso." });
+      setFeedback({ type: "success", message: t.practiceDone });
       return;
     }
     setFeedback({ type: "success", message });
@@ -285,12 +289,12 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
       const hasOpponentReply = pvStepIndex + 1 < activePvRef.current.length;
       if (!hasOpponentReply) {
-        finishPuzzleSuccess(playedUci, isFirstTry, `¡Brillante! Encontraste ${puzzle.engine_solution.best_move_san}.`);
+        finishPuzzleSuccess(playedUci, isFirstTry, t.brilliantFound(puzzle.engine_solution.best_move_san));
         return;
       }
 
       setIsOpponentMoving(true);
-      setFeedback({ type: "success", message: `¡Exacto! ${opponentName} responde…` });
+      setFeedback({ type: "success", message: t.exactReplies(opponentName) });
       later(() => {
         const san = playOpponent(activePvRef.current[pvStepIndex + 1].toLowerCase());
         if (san) setPlayed((p) => [...p, { san, by: "opp" }]);
@@ -298,9 +302,9 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         if (pvStepIndex + 2 < activePvRef.current.length) {
           setPvStepIndex(pvStepIndex + 2);
           setIsOpponentMoving(false);
-          setFeedback({ type: "success", message: "¡Bien! Encuentra la siguiente jugada para rematar la ventaja." });
+          setFeedback({ type: "success", message: t.nextMove });
         } else {
-          finishPuzzleSuccess(playedUci, isFirstTry, "¡Brillante! Completaste toda la combinación y recuperaste la ventaja.");
+          finishPuzzleSuccess(playedUci, isFirstTry, t.comboDone);
         }
       }, OPPONENT_DELAY_MS);
       return;
@@ -317,12 +321,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
       sound.error();
       setEvalWhite(toWhite(puzzle.engine_solution.eval_after_user_move));
       setIsFailed(true);
-      setFeedback({
-        type: "error",
-        message: `Es la misma jugada de tu partida (${puzzle.user_move.san}). Te costó ${Math.round(
-          puzzle.engine_solution.cpl
-        )} centipeones. Reinicia y busca otra idea.`,
-      });
+      setFeedback({ type: "error", message: t.sameBlunder(puzzle.user_move.san, Math.round(puzzle.engine_solution.cpl)) });
 
       if (!practicing) {
         store
@@ -346,11 +345,19 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     chess.undo();
     setSyncKey((k) => k + 1);
     setIsEvaluating(true);
-    setFeedback({ type: "info", message: `Analizando ${userSan} con el motor…` });
+    setFeedback({ type: "info", message: t.analyzing(userSan) });
 
     try {
       const evalRes: EvaluateMoveResponse = await store.evaluateMove(puzzle, playedUci, chess.fen());
       setIsEvaluating(false);
+      // El texto se compone con los campos del resultado (el `message` viene en español del backend o de trainerLogic)
+      const evalMessage = evalRes.is_best
+        ? t.evalBest
+        : evalRes.is_valid
+        ? t.evalGood
+        : evalRes.is_historical_blunder
+        ? t.sameBlunder(puzzle.user_move.san, Math.round(puzzle.engine_solution.cpl))
+        : t.evalLoses(Math.trunc(evalRes.cpl_diff));
 
       if (evalRes.is_valid) {
         chess.move({ from: orig, to: dest, promotion: "q" });
@@ -366,10 +373,10 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           later(() => {
             const san = playOpponent(reply);
             if (san) setPlayed((p) => [...p, { san, by: "opp" }]);
-            finishPuzzleSuccess(playedUci, isFirstTry, evalRes.message);
+            finishPuzzleSuccess(playedUci, isFirstTry, evalMessage);
           }, OPPONENT_DELAY_MS);
         } else {
-          finishPuzzleSuccess(playedUci, isFirstTry, evalRes.message);
+          finishPuzzleSuccess(playedUci, isFirstTry, evalMessage);
         }
       } else {
         mistakesRef.current += 1;
@@ -378,7 +385,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         sound.error();
         const before = puzzle.engine_solution.eval_before;
         setEvalWhite(toWhite(before - evalRes.cpl_diff / 100));
-        setFeedback({ type: "warning", message: evalRes.message });
+        setFeedback({ type: "warning", message: evalMessage });
         later(() => {
           setArrows([]);
           setEvalWhite(toWhite(before));
@@ -389,7 +396,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
       setIsEvaluating(false);
       setEffect("shake");
       sound.error();
-      setFeedback({ type: "warning", message: "Jugada legal, pero no es la idea ganadora. Prueba otra." });
+      setFeedback({ type: "warning", message: t.evalFailed });
       later(() => setArrows([]), 1000);
     }
   };
@@ -415,7 +422,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     setEvalWhite(toWhite(puzzle.engine_solution.eval_before));
     if (revealed) {
       setPracticing(true);
-      setFeedback({ type: "info", message: "Practica la solución: juega tú la línea que acabas de ver." });
+      setFeedback({ type: "info", message: t.practiceStart });
     } else {
       setFeedback({ type: "idle", message: "" });
     }
@@ -553,10 +560,17 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
   });
 
   const remainingPlies = isSolved || isFailed || revealed ? 0 : Math.max(0, activePvRef.current.length - played.length);
+  // Pistas en el idioma de la interfaz (en español coinciden con las guardadas en el ejercicio)
+  const tutorHints = generateHintsForBlunder(
+    puzzle.classification.theme,
+    puzzle.engine_solution.best_move_san,
+    puzzle.engine_solution.best_move_uci,
+    lang
+  );
   const hints = [
-    { level: 1, title: "Idea", text: puzzle.tutor_hints.level_1_conceptual, color: "border-amber-400 text-amber-100" },
-    { level: 2, title: "Dirección", text: puzzle.tutor_hints.level_2_directional, color: "border-cyan-400 text-cyan-100" },
-    { level: 3, title: "Concreta", text: puzzle.tutor_hints.level_3_concrete, color: "border-emerald-400 text-emerald-100" },
+    { level: 1, title: t.hintLevels[0], text: tutorHints.level_1_conceptual, color: "border-amber-400 text-amber-100" },
+    { level: 2, title: t.hintLevels[1], text: tutorHints.level_2_directional, color: "border-cyan-400 text-cyan-100" },
+    { level: 3, title: t.hintLevels[2], text: tutorHints.level_3_concrete, color: "border-emerald-400 text-emerald-100" },
   ];
 
   // Mensaje mientras hay una línea abierta
@@ -564,38 +578,42 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
     if (!line) return null;
     const sans = line.frames.slice(1).map((f) => f.san).join(" ");
     if (line.kind === "solution") {
-      return { type: "warning" as const, message: `Solución: ${puzzle.engine_solution.best_move_san}. Línea del motor: ${sans}` };
+      return { type: "warning" as const, message: t.lineSolution(puzzle.engine_solution.best_move_san, sans) };
     }
     if (line.index < line.frames.length - 1) {
-      return { type: "info" as const, message: `En la partida jugaste ${puzzle.user_move.san}. Mira cómo responde ${opponentName}…` };
+      return { type: "info" as const, message: t.lineWatching(puzzle.user_move.san, opponentName) };
     }
     return {
       type: "error" as const,
-      message:
-        `Tras ${moveLabel} ${puzzle.user_move.san}, ${opponentName} responde ${refutationSan[0] ?? ""}` +
-        (refutationSan.length > 1 ? ` y la línea sigue ${refutationSan.slice(1).join(" ")}` : "") +
-        `. La evaluación pasa de ${fmtEval(puzzle.engine_solution.eval_before)} a ${fmtEval(
-          puzzle.engine_solution.eval_after_user_move
-        )}. La clave era ${puzzle.engine_solution.best_move_san}.`,
+      message: t.lineRefutation({
+        move: moveLabel,
+        san: puzzle.user_move.san,
+        opp: opponentName,
+        reply: refutationSan[0] ?? "",
+        rest: refutationSan.slice(1).join(" "),
+        from: fmtEval(puzzle.engine_solution.eval_before),
+        to: fmtEval(puzzle.engine_solution.eval_after_user_move),
+        best: puzzle.engine_solution.best_move_san,
+      }),
     };
   })();
   const shownFeedback = lineMessage ?? feedback;
 
   const userStatus = pending
-    ? "Confirma tu jugada"
+    ? t.status.confirm
     : line
     ? line.kind === "solution"
-      ? "Viendo la solución"
-      : "Viendo tu error"
+      ? t.status.watchingSolution
+      : t.status.watchingMistake
     : isEvaluating
-    ? "Evaluando…"
+    ? t.status.evaluating
     : isSolved
-    ? "Resuelto"
+    ? t.status.solved
     : isFailed
-    ? "Error repetido"
+    ? t.status.repeated
     : practicing
-    ? "Practicando"
-    : "Tu turno";
+    ? t.status.practicing
+    : t.status.yourTurn;
   const userTone = isSolved ? "emerald" : isFailed ? "rose" : isEvaluating || pending ? "amber" : line ? "cyan" : "brass";
 
   return (
@@ -606,7 +624,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           name={opponentName}
           colorLabel={opponentColorLabel}
           isWhite={!isUserWhite}
-          status={isOpponentMoving ? "Pensando…" : undefined}
+          status={isOpponentMoving ? t.status.thinking : undefined}
           statusTone="cyan"
         />
 
@@ -641,10 +659,10 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
             name={username}
             colorLabel={userColorLabel}
             isWhite={isUserWhite}
-            isYou
             status={userStatus}
             statusTone={userTone}
-            right={<span className="num hidden text-xs text-ivory-faint sm:inline">Jugada {moveLabel}</span>}
+            youLabel={t.you}
+            right={<span className="num hidden text-xs text-ivory-faint sm:inline">{t.move(moveLabel)}</span>}
           />
         )}
       </div>
@@ -658,32 +676,32 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
               <theme.icon className="h-3 w-3" aria-hidden />
               {theme.label}
             </Badge>
-            <Badge>{PHASE_LABEL[puzzle.classification.phase] ?? puzzle.classification.phase}</Badge>
+            <Badge>{m.labels.phase[puzzle.classification.phase] ?? puzzle.classification.phase}</Badge>
             {puzzle.classification.psychological_tag !== "normal" && (
               <Badge tone="amber">
                 <Zap className="h-3 w-3" aria-hidden />
-                {PSYCH_LABEL[puzzle.classification.psychological_tag]}
+                {m.labels.psych[puzzle.classification.psychological_tag]}
               </Badge>
             )}
             {puzzle.is_mastered && (
               <Badge tone="emerald">
-                <Award className="h-3 w-3" aria-hidden /> Dominado
+                <Award className="h-3 w-3" aria-hidden /> {t.mastered}
               </Badge>
             )}
           </div>
           <h3 className="mt-3 font-display text-xl font-semibold text-ivory">
-            Partida contra <span className="text-brass-300">{opponentName}</span>
+            {t.gameAgainst(<span className="text-brass-300">{opponentName}</span>)}
           </h3>
           <p className="mt-0.5 text-xs text-ivory-faint">
-            <span className="num">{puzzle.metadata.eco}</span> · {puzzle.metadata.opening_name || "Apertura estándar"} ·
-            Ejercicio {puzzleIndex + 1} de {totalPuzzles}
+            <span className="num">{puzzle.metadata.eco}</span> · {puzzle.metadata.opening_name || t.standardOpening} ·{" "}
+            {t.exerciseOf(puzzleIndex + 1, totalPuzzles)}
           </p>
         </div>
 
         {/* Lo que pasó en la partida */}
         <div className="rounded-xl border border-rose-500/20 bg-gradient-to-br from-rose-500/10 to-transparent p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-rose-300">
-            <History className="h-3.5 w-3.5" aria-hidden /> En tu partida jugaste
+            <History className="h-3.5 w-3.5" aria-hidden /> {t.youPlayed}
           </div>
           <div className="mt-1.5 flex items-baseline justify-between gap-3">
             <span className="num text-2xl font-semibold text-rose-300">
@@ -697,10 +715,10 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ivory-faint">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" aria-hidden />
-              Pensaste <strong className="num font-semibold text-ivory-muted">{puzzle.user_move.time_spent_seconds}s</strong>
+              {t.thought(<strong className="num font-semibold text-ivory-muted">{puzzle.user_move.time_spent_seconds}s</strong>)}
             </span>
             <span className="num">
-              Eval {fmtEval(puzzle.engine_solution.eval_before)} → {fmtEval(puzzle.engine_solution.eval_after_user_move)}
+              {t.eval} {fmtEval(puzzle.engine_solution.eval_before)} → {fmtEval(puzzle.engine_solution.eval_after_user_move)}
             </span>
             {puzzle.game_url && (
               <a
@@ -709,14 +727,14 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
                 rel="noreferrer"
                 className="flex items-center gap-1 text-ivory-muted underline-offset-2 hover:text-brass-300 hover:underline"
               >
-                Ver partida <ExternalLink className="h-3 w-3" aria-hidden />
+                {t.viewGame} <ExternalLink className="h-3 w-3" aria-hidden />
               </a>
             )}
           </div>
           {isImpulsive && (
             <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-200/90">
               <Zap className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-              Jugaste por impulso: aquí te pediremos confirmar tu jugada antes de darla por buena.
+              {t.impulsiveNote}
             </p>
           )}
         </div>
@@ -726,28 +744,26 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           {shownFeedback.message ? (
             <FeedbackBanner type={shownFeedback.type} message={shownFeedback.message} key={shownFeedback.message} />
           ) : (
-            <p className="text-sm text-ivory-muted">
-              Juegas con <strong className="text-ivory">{userColorLabel}</strong>. Encuentra la jugada que no viste en la partida.
-            </p>
+            <p className="text-sm text-ivory-muted">{t.prompt(<strong className="text-ivory">{userColorLabel}</strong>)}</p>
           )}
         </div>
 
         {/* Línea jugada */}
         {!line && (played.length > 0 || remainingPlies > 0) && (
           <div>
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-faint">Tu línea</div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-faint">{t.yourLine}</div>
             <div className="flex flex-wrap gap-1.5">
-              {played.map((m, i) => (
+              {played.map((pm, i) => (
                 <span
-                  key={`${m.san}-${i}`}
+                  key={`${pm.san}-${i}`}
                   className={cn(
                     "num animate-pop rounded-lg border px-2 py-1 text-xs font-semibold",
-                    m.by === "user"
+                    pm.by === "user"
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                       : "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
                   )}
                 >
-                  {m.san}
+                  {pm.san}
                 </span>
               ))}
               {Array.from({ length: remainingPlies }).map((_, i) => (
@@ -767,8 +783,8 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
         <div className="rounded-xl border border-ink-600/60 bg-ink-900/60 p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-ivory-faint">Pistas</span>
-              <div className="flex gap-1" aria-label={`${hintLevel} de 3 pistas usadas`}>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ivory-faint">{t.hints}</span>
+              <div className="flex gap-1" aria-label={t.hintsUsed(hintLevel)}>
                 {[1, 2, 3].map((n) => (
                   <span
                     key={n}
@@ -780,16 +796,14 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
             {hintLevel < 3 && !isSolved && !revealed && (
               <Button variant="ghost" size="sm" onClick={handleAskHint} className="text-amber-300 hover:text-amber-200">
                 <Lightbulb className="h-3.5 w-3.5" aria-hidden />
-                Pista {hintLevel + 1}
+                {t.hint(hintLevel + 1)}
                 <Kbd className="ml-1 hidden sm:inline-flex">H</Kbd>
               </Button>
             )}
           </div>
 
           {hintLevel === 0 ? (
-            <p className="text-xs italic text-ivory-faint">
-              Si te atascas, pide una pista. Cada pista reduce el progreso de repaso de esta posición.
-            </p>
+            <p className="text-xs italic text-ivory-faint">{t.hintsEmpty}</p>
           ) : (
             <ol className="space-y-2">
               {hints
@@ -798,7 +812,7 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
                   <li key={h.level} className={cn("animate-fade-up border-l-2 py-0.5 pl-3 text-xs leading-relaxed", h.color)}>
                     <span className="font-semibold">{h.title}: </span>
                     {h.text}
-                    {h.level === 2 && <span className="text-ivory-faint"> (casilla marcada en el tablero)</span>}
+                    {h.level === 2 && <span className="text-ivory-faint"> {t.markedSquare}</span>}
                   </li>
                 ))}
             </ol>
@@ -812,14 +826,14 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
               {canExplain && (
                 <Button variant="danger" onClick={handleExplain}>
                   <HelpCircle className="h-4 w-4" aria-hidden />
-                  ¿Por qué fue un error?
+                  {t.why}
                   <Kbd className="ml-1 hidden sm:inline-flex">E</Kbd>
                 </Button>
               )}
               {(isSolved || revealed) && (
                 <Button variant="secondary" onClick={() => openLine("solution", solutionSteps())}>
                   <Play className="h-4 w-4 text-cyan-300" aria-hidden />
-                  Ver la línea del motor
+                  {t.engineLine}
                 </Button>
               )}
             </div>
@@ -828,26 +842,26 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
           {revealed && !practicing && !line && (
             <Button variant="primary" className="w-full" onClick={handleReset}>
               <Dumbbell className="h-4 w-4" aria-hidden />
-              Practicar la solución
+              {t.practice}
               <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
             </Button>
           )}
 
           {isSolved || revealed ? (
             <Button variant="success" size="lg" className="w-full" onClick={onNext}>
-              Siguiente ejercicio
+              {t.next}
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Button>
           ) : (
             <div className="flex gap-3">
               <Button variant={isFailed ? "primary" : "secondary"} className="flex-1" onClick={handleReset}>
                 <RotateCcw className="h-4 w-4" aria-hidden />
-                Reiniciar
+                {t.reset}
                 <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
               </Button>
               <Button variant="ghost" className="flex-1 border border-ink-600" onClick={handleRevealSolution}>
                 <Eye className="h-4 w-4" aria-hidden />
-                Ver solución
+                {t.solution}
                 <Kbd className="ml-1 hidden sm:inline-flex">S</Kbd>
               </Button>
             </div>
@@ -855,7 +869,8 @@ export const BlunderReplay: React.FC<BlunderReplayProps> = ({
 
           <p className="hidden items-center justify-center gap-1.5 text-[11px] text-ivory-faint sm:flex">
             <Kbd>←</Kbd>
-            <Kbd>→</Kbd> navegar · <Kbd>H</Kbd> pista · <Kbd>R</Kbd> reiniciar · <Kbd>S</Kbd> solución · <Kbd>E</Kbd> por qué
+            <Kbd>→</Kbd> {t.shortcuts.navigate} · <Kbd>H</Kbd> {t.shortcuts.hint} · <Kbd>R</Kbd> {t.shortcuts.reset} · <Kbd>S</Kbd>{" "}
+            {t.shortcuts.solution} · <Kbd>E</Kbd> {t.shortcuts.why}
           </p>
         </div>
       </Card>
@@ -882,7 +897,7 @@ function PlayerStrip({
   name,
   colorLabel,
   isWhite,
-  isYou,
+  youLabel,
   status,
   statusTone = "brass",
   right,
@@ -890,7 +905,8 @@ function PlayerStrip({
   name: string;
   colorLabel: string;
   isWhite: boolean;
-  isYou?: boolean;
+  /** Solo en la franja del usuario ("Tú" / "You"). */
+  youLabel?: string;
   status?: string;
   statusTone?: keyof typeof STATUS_TONE;
   right?: React.ReactNode;
@@ -907,7 +923,7 @@ function PlayerStrip({
         />
         <span className="max-w-[9rem] truncate text-sm font-semibold text-ivory sm:max-w-none">{name}</span>
         <span className="hidden text-xs text-ivory-faint sm:inline">
-          {isYou ? "Tú · " : ""}
+          {youLabel ? `${youLabel} · ` : ""}
           {colorLabel}
         </span>
         {status && (
@@ -938,25 +954,27 @@ function LineControls({
   onTogglePlay: () => void;
   onClose: () => void;
 }) {
+  const { m } = useI18n();
+  const t = m.trainer.replay;
   const last = line.frames.length - 1;
   const frame = line.frames[line.index];
   const btn = "h-9 w-9 px-0";
   return (
-    <div className="flex items-center justify-between gap-2 pl-6 sm:pl-8" role="group" aria-label="Reproducir la línea">
+    <div className="flex items-center justify-between gap-2 pl-6 sm:pl-8" role="group" aria-label={t.lineAria}>
       <div className="flex items-center gap-1">
-        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep("start")} disabled={line.index === 0} aria-label="Al principio">
+        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep("start")} disabled={line.index === 0} aria-label={t.toStart}>
           <SkipBack className="h-4 w-4" aria-hidden />
         </Button>
-        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep(-1)} disabled={line.index === 0} aria-label="Jugada anterior">
+        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep(-1)} disabled={line.index === 0} aria-label={t.prevMove}>
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </Button>
-        <Button variant="primary" size="sm" className={btn} onClick={onTogglePlay} aria-label={line.playing ? "Pausa" : "Reproducir"}>
+        <Button variant="primary" size="sm" className={btn} onClick={onTogglePlay} aria-label={line.playing ? t.pause : t.play}>
           {line.playing ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
         </Button>
-        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep(1)} disabled={line.index === last} aria-label="Jugada siguiente">
+        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep(1)} disabled={line.index === last} aria-label={t.nextMove2}>
           <ChevronRight className="h-4 w-4" aria-hidden />
         </Button>
-        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep("end")} disabled={line.index === last} aria-label="Al final">
+        <Button variant="secondary" size="sm" className={btn} onClick={() => onStep("end")} disabled={line.index === last} aria-label={t.toEnd}>
           <SkipForward className="h-4 w-4" aria-hidden />
         </Button>
       </div>
@@ -964,30 +982,30 @@ function LineControls({
         {line.index}/{last}
         {frame.san && <strong className="ml-2 text-ivory">{frame.san}</strong>}
       </span>
-      <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar la línea">
+      <Button variant="ghost" size="sm" onClick={onClose} aria-label={t.closeLine}>
         <X className="h-4 w-4" aria-hidden />
-        <span className="hidden sm:inline">Cerrar</span>
+        <span className="hidden sm:inline">{t.close}</span>
       </Button>
     </div>
   );
 }
 
 function ConfirmMoveCard({ san, onConfirm, onCancel }: { san: string; onConfirm: () => void; onCancel: () => void }) {
+  const { m } = useI18n();
+  const t = m.trainer.replay;
   return (
     <div className="absolute inset-x-3 bottom-3 z-10 animate-pop rounded-xl border border-amber-500/40 bg-ink-900/95 p-3 shadow-card backdrop-blur sm:inset-x-6 sm:bottom-6 sm:p-4">
       <div className="flex items-start gap-2 text-sm text-amber-100">
         <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
-        <span>
-          <strong className="font-semibold">Antes de mover:</strong> ¿revisaste jaques, capturas y amenazas del rival?
-        </span>
+        <span>{t.confirmPrompt((text) => <strong className="font-semibold">{text}</strong>)}</span>
       </div>
       <div className="mt-3 flex gap-2">
         <Button variant="primary" size="sm" className="flex-1" onClick={onConfirm} autoFocus>
-          Confirmar <span className="num">{san}</span>
+          {t.confirm} <span className="num">{san}</span>
           <Kbd className="ml-1 hidden sm:inline-flex">↵</Kbd>
         </Button>
         <Button variant="secondary" size="sm" className="flex-1" onClick={onCancel}>
-          Cambiar
+          {t.change}
           <Kbd className="ml-1 hidden sm:inline-flex">Esc</Kbd>
         </Button>
       </div>

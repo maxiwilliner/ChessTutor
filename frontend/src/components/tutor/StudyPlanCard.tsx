@@ -5,23 +5,28 @@ import { DailyPlanItem } from "@/types/api";
 import { Card, SectionHeader } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
 import { CalendarDays, Check, Clock } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
+import { LOCALE } from "@/lib/i18n/paths";
 
-const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+/** "Day 1 (Monday)" / "Día 1 (Lunes)" -> "Monday" / "Lunes" */
+const dayName = (day: string) => day.replace(/^.*\((.+)\)\s*$/, "$1");
 
 export const StudyPlanCard: React.FC<{ plan: DailyPlanItem[]; username: string }> = ({ plan, username }) => {
   const storageKey = `chesstutor_plan_${username.toLowerCase()}`;
   const [done, setDone] = useState<Record<number, boolean>>({});
   const [today, setToday] = useState<string>("");
+  const { m, lang } = useI18n();
+  const t = m.dashboard.plan;
 
   useEffect(() => {
-    setToday(WEEKDAYS[new Date().getDay()]);
+    setToday(new Date().toLocaleDateString(LOCALE[lang], { weekday: "long" }).toLowerCase());
     try {
       const raw = window.localStorage.getItem(storageKey);
       if (raw) setDone(JSON.parse(raw));
     } catch {
       // sin almacenamiento: el progreso dura solo la sesión
     }
-  }, [storageKey]);
+  }, [storageKey, lang]);
 
   const toggle = (idx: number) => {
     setDone((prev) => {
@@ -44,15 +49,15 @@ export const StudyPlanCard: React.FC<{ plan: DailyPlanItem[]; username: string }
     <Card className="p-5 sm:p-7">
       <SectionHeader
         icon={CalendarDays}
-        eyebrow="Plan de estudio"
-        title="Tu semana de entrenamiento"
-        subtitle={`Rutinas cortas enfocadas en tus fugas · ${totalMinutes} minutos en total. Marca cada día al completarlo.`}
+        eyebrow={t.eyebrow}
+        title={t.title}
+        subtitle={t.subtitle(totalMinutes)}
         actions={
           <div className="flex items-center gap-3">
             <span className="num text-sm text-ivory-muted">
               <strong className="text-brass-300">{completed}</strong>/{total}
             </span>
-            <div className="h-2 w-28 overflow-hidden rounded-full bg-ink-700" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Progreso del plan">
+            <div className="h-2 w-28 overflow-hidden rounded-full bg-ink-700" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={t.progress}>
               <div className="h-full rounded-full bg-brass-400 transition-[width] duration-500" style={{ width: `${pct}%` }} />
             </div>
           </div>
@@ -62,7 +67,7 @@ export const StudyPlanCard: React.FC<{ plan: DailyPlanItem[]; username: string }
       <ol className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
         {plan.map((item, idx) => {
           const isDone = !!done[idx];
-          const isToday = today !== "" && item.day.includes(today);
+          const isToday = today !== "" && dayName(item.day).toLowerCase() === today;
           return (
             <li key={idx}>
               <button
@@ -80,8 +85,8 @@ export const StudyPlanCard: React.FC<{ plan: DailyPlanItem[]; username: string }
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className={cn("text-xs font-semibold", isToday ? "text-brass-300" : "text-ivory-faint")}>
-                    {item.day.replace(/^Día \d+ \((.+)\)$/, "$1")}
-                    {isToday && <span className="ml-1.5 rounded-full bg-brass-400 px-1.5 py-px text-[10px] text-ink-950">Hoy</span>}
+                    {dayName(item.day)}
+                    {isToday && <span className="ml-1.5 rounded-full bg-brass-400 px-1.5 py-px text-[10px] text-ink-950">{t.today}</span>}
                   </span>
                   <span
                     className={cn(

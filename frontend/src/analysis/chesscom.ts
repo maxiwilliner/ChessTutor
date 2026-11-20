@@ -5,16 +5,27 @@
 import type { PlayerProfile } from "@/types/api";
 import type { NormalizedGame } from "./types";
 import { parseGamePgn } from "./parser";
+import { CodedError, type ErrorCode, type ErrorParams } from "@/lib/errors";
 
 const BASE = "https://api.chess.com/pub";
 export const USERNAME_RE = /^[A-Za-z0-9_-]{3,25}$/;
 const MAX_RETRIES = 3;
 
-export type ChessComErrorKind = "invalid_username" | "not_found" | "rate_limited" | "network" | "server";
+export type ChessComErrorKind = "invalid_username" | "not_found" | "rate_limited" | "network" | "offline" | "server";
 
-export class ChessComError extends Error {
-  constructor(message: string, readonly kind: ChessComErrorKind) {
-    super(message);
+const KIND_CODE: Record<ChessComErrorKind, ErrorCode> = {
+  invalid_username: "invalid_username",
+  not_found: "user_not_found",
+  rate_limited: "chesscom_rate_limited",
+  network: "chesscom_network",
+  offline: "offline",
+  server: "chesscom_server",
+};
+
+/** `kind` agrupa en Sentry; `code` + `params` dan el texto en el idioma de la interfaz. */
+export class ChessComError extends CodedError {
+  constructor(message: string, readonly kind: ChessComErrorKind, params: ErrorParams = {}) {
+    super(KIND_CODE[kind], message, params);
   }
 }
 
@@ -42,12 +53,9 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T | null> 
         await wait(attempt);
         continue;
       }
-      throw new ChessComError(
-        offline
-          ? "Parece que no tienes conexión a internet. Conéctate y vuelve a intentarlo."
-          : "No se pudo contactar con Chess.com. Inténtalo de nuevo en un minuto.",
-        "network"
-      );
+      throw offline
+        ? new ChessComError("Parece que no tienes conexión a internet. Conéctate y vuelve a intentarlo.", "offline")
+        : new ChessComError("No se pudo contactar con Chess.com. Inténtalo de nuevo en un minuto.", "network");
     }
     if (res.status === 404) return null;
     if (res.ok) return (await res.json()) as T;
@@ -60,7 +68,9 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T | null> 
     if (res.status === 429) {
       throw new ChessComError("Chess.com está limitando las peticiones. Espera un minuto y vuelve a intentarlo.", "rate_limited");
     }
-    throw new ChessComError(`Chess.com respondió con un error (${res.status}). Inténtalo de nuevo en unos minutos.`, "server");
+    throw new ChessComError(`Chess.com respondió con un error (${res.status}). Inténtalo de nuevo en unos minutos.`, "server", {
+      status: res.status,
+    });
   }
 }
 
@@ -105,10 +115,16 @@ export const MONTHS_PER_BATCH = 3;
 export const MAX_MONTHS = 36;
 
 const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-/** ".../games/2025/10" -> "oct 2025" */
+/** ".../games/2025/10" -> "oct 2025" (mensajes internos en español) */
 export function archiveLabel(url: string): string {
   const [y, m] = url.split("/").slice(-2).map(Number);
   return m >= 1 && m <= 12 ? `${MONTHS_ES[m - 1]} ${y}` : url;
+}
+
+/** ".../games/2025/10" -> "2025-10" (la interfaz lo formatea en su idioma) */
+export function archiveMonth(url: string): string {
+  const [y, m] = url.split("/").slice(-2);
+  return `${y}-${m}`;
 }
 
 /**
@@ -120,7 +136,8 @@ export async function getRecentGames(
   timeClass: string,
   limit: number,
   signal?: AbortSignal,
-  onMonth?: (label: string) => void
+  /** Mes más antiguo del lote que se está pidiendo, "2025-10". */
+  onMonth?: (isoMonth: string) => void
 ): Promise<NormalizedGame[]> {
   checkUsername(username);
   const user = username.toLowerCase();
@@ -133,13 +150,13 @@ export async function getRecentGames(
     }),
     getJson<{ archives: string[] }>(`${BASE}/player/${user}/games/archives`, signal),
   ]);
-  if (!index) throw new ChessComError(`No existe el usuario «${username}» en Chess.com. Revisa cómo se escribe.`, "not_found");
+  if (!index) throw new ChessComError(`No existe el usuario «${username}» en Chess.com. Revisa cómo se escribe.`, "not_found", { username });
   const maxMonths = stats && timeClass && ratedGames(stats, timeClass) === 0 ? MONTHS_PER_BATCH : MAX_MONTHS;
   const months = [...(index.archives ?? [])].reverse().slice(0, maxMonths);
   const games: NormalizedGame[] = [];
   for (let i = 0; i < months.length; i += MONTHS_PER_BATCH) {
     const batch = months.slice(i, i + MONTHS_PER_BATCH);
-    onMonth?.(archiveLabel(batch[batch.length - 1]));
+    onMonth?.(archiveMonth(batch[batch.length - 1]));
     const results = await Promise.all(batch.map((url) => getJson<{ games: RawGame[] }>(url, signal)));
     for (const month of results) {
       for (const g of [...(month?.games ?? [])].reverse()) {

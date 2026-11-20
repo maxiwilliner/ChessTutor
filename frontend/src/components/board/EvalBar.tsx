@@ -2,6 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface EvalBarProps {
   /** Evaluación en peones desde la perspectiva de las blancas. */
@@ -24,6 +25,7 @@ function formatEval(pawns: number) {
 
 /** Barra vertical de evaluación. Las blancas ocupan el lado de su orientación. */
 export function EvalBar({ evalWhite, orientation, className }: EvalBarProps) {
+  const { m } = useI18n();
   const share = whiteShare(evalWhite);
   const whiteAtBottom = orientation === "white";
   const whiteWinning = evalWhite >= 0;
@@ -32,11 +34,11 @@ export function EvalBar({ evalWhite, orientation, className }: EvalBarProps) {
   return (
     <div
       role="meter"
-      aria-label="Barra de evaluación"
+      aria-label={m.trainer.replay.evalBar}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(share)}
-      aria-valuetext={`${whiteWinning ? "Blancas" : "Negras"} ${whiteWinning ? "+" : "−"}${label}`}
+      aria-valuetext={`${whiteWinning ? m.trainer.replay.white : m.trainer.replay.black} ${whiteWinning ? "+" : "−"}${label}`}
       className={cn(
         "relative flex w-3.5 shrink-0 overflow-hidden rounded-lg border border-ink-600 bg-ink-950 sm:w-5",
         whiteAtBottom ? "flex-col-reverse" : "flex-col",

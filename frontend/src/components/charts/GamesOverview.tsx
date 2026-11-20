@@ -6,7 +6,7 @@ import { GameRecap, GameStats, RatingGapKey } from "@/types/api";
 import { Card, SectionHeader } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
 import { Segmented } from "@/components/ui/Segmented";
-import { RESULT_LABEL, TERMINATION_LABEL } from "@/lib/labels";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { Swords, TrendingUp, LifeBuoy, Scale, ExternalLink, Target, ChevronDown } from "lucide-react";
 
@@ -17,12 +17,6 @@ const FILTERS: Record<Filter, (g: GameRecap) => boolean> = {
   thrown: (g) => g.advantage === "thrown" || g.advantage === "drawn",
   better_lost: (g) => playedBetter(g) && g.result === "loss",
   losses: (g) => g.result === "loss",
-};
-
-const GAP_LABEL: Record<RatingGapKey, { title: string; sub: string }> = {
-  stronger: { title: "Rival más fuerte", sub: "más de 50 de Elo por encima" },
-  similar: { title: "Rival de tu nivel", sub: "±50 de Elo" },
-  weaker: { title: "Rival más débil", sub: "más de 50 por debajo" },
 };
 
 const RESULT_CHIP: Record<GameRecap["result"], string> = {
@@ -37,12 +31,9 @@ function playedBetter(g: GameRecap) {
   return g.user_accuracy !== null && g.opponent_accuracy !== null && g.user_accuracy > g.opponent_accuracy;
 }
 
-const num = (n: number, digits = 1) => n.toLocaleString("es", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const signed = (n: number) => `${n > 0 ? "+" : ""}${num(n)}`;
-/** ±10 es el tope (mate o ventaja aplastante): mejor decirlo con palabras. */
-const advText = (n: number) => (Math.abs(n) >= 10 ? "decisiva" : `de ${signed(n)}`);
-
 export function GamesOverview({ stats, games, username }: { stats?: GameStats | null; games?: GameRecap[] | null; username: string }) {
+  const { m, fmt } = useI18n();
+  const t = m.dashboard.games;
   const [filter, setFilter] = useState<Filter>("all");
   const [expanded, setExpanded] = useState(false);
   const counts = useMemo(
@@ -50,22 +41,13 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
     [games]
   );
 
-  const header = (
-    <SectionHeader
-      icon={Swords}
-      eyebrow="Tus partidas"
-      title="Cómo se decidieron"
-      subtitle="Las ventajas que convertiste o se te escaparon, y quién jugó mejor según el motor, partida a partida."
-    />
-  );
+  const header = <SectionHeader icon={Swords} eyebrow={t.eyebrow} title={t.title} subtitle={t.subtitle} />;
 
   if (!stats || !games) {
     return (
       <Card className="p-5 sm:p-7">
         {header}
-        <p className="mt-6 rounded-xl border border-ink-600/60 bg-ink-900/60 p-4 text-sm text-ivory-faint">
-          Vuelve a analizar tus partidas para ver la conversión de ventaja y el resumen de cada partida.
-        </p>
+        <p className="mt-6 rounded-xl border border-ink-600/60 bg-ink-900/60 p-4 text-sm text-ivory-faint">{t.reanalyze}</p>
       </Card>
     );
   }
@@ -80,54 +62,44 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile
-          label="Conversión de ventaja"
+          label={t.conversion}
           value={adv.converted}
-          suffix={`de ${adv.games_with_advantage}`}
+          suffix={t.outOf(adv.games_with_advantage)}
           icon={TrendingUp}
           tone="emerald"
-          hint={
-            adv.games_with_advantage
-              ? `Partidas en las que llegaste a +3 y ganaste · ${adv.thrown} perdidas, ${adv.drawn} en tablas`
-              : "No llegaste a +3 en ninguna partida"
-          }
+          hint={adv.games_with_advantage ? t.conversionHint(adv.thrown, adv.drawn) : t.conversionNone}
         />
         <StatTile
-          label="Remontadas"
+          label={t.comebacks}
           value={adv.saved_win + adv.saved_draw}
-          suffix={`de ${adv.games_with_disadvantage}`}
+          suffix={t.outOf(adv.games_with_disadvantage)}
           icon={LifeBuoy}
           tone="cyan"
-          hint={
-            adv.games_with_disadvantage
-              ? `Partidas con −3 o peor que salvaste · ${adv.saved_win} ganadas, ${adv.saved_draw} tablas`
-              : "Nunca estuviste a −3 o peor"
-          }
+          hint={adv.games_with_disadvantage ? t.comebacksHint(adv.saved_win, adv.saved_draw) : t.comebacksNone}
           style={{ animationDelay: "60ms" }}
         />
         <StatTile
-          label="Mejor que tu rival"
+          label={t.better}
           value={vs.played_better}
-          suffix={`de ${vs.games_compared}`}
+          suffix={t.outOf(vs.games_compared)}
           icon={Scale}
           tone="brass"
-          hint={`Partidas con más precisión que el rival · perdiste ${vs.played_better_lost} de esas`}
+          hint={t.betterHint(vs.played_better_lost)}
           style={{ animationDelay: "120ms" }}
         />
       </div>
 
       {/* Por Elo del rival */}
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {(["stronger", "similar", "weaker"] as const).map((k) => {
+        {(["stronger", "similar", "weaker"] as RatingGapKey[]).map((k) => {
           const b = stats.by_rating_gap[k];
           return (
             <div key={k} className="rounded-xl border border-ink-600/60 bg-ink-900/60 p-3.5">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-ivory">{GAP_LABEL[k].title}</span>
-                <span className="num text-xs text-ivory-faint">
-                  {b.games} {b.games === 1 ? "partida" : "partidas"}
-                </span>
+                <span className="text-sm font-medium text-ivory">{t.gap[k].title}</span>
+                <span className="num text-xs text-ivory-faint">{t.gapGames(b.games)}</span>
               </div>
-              <div className="text-[11px] text-ivory-faint">{GAP_LABEL[k].sub}</div>
+              <div className="text-[11px] text-ivory-faint">{t.gap[k].sub}</div>
               {b.games ? (
                 <>
                   <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-ink-700" aria-hidden>
@@ -136,11 +108,12 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
                     <div className="bg-rose-400" style={{ width: `${(b.losses / b.games) * 100}%` }} />
                   </div>
                   <div className="num mt-1.5 text-xs text-ivory-muted">
-                    <strong className="text-ivory">{Math.round(b.win_rate * 100)} %</strong> victorias · {b.wins}V {b.draws}T {b.losses}D
+                    <strong className="text-ivory">{t.gapWins(fmt.pct(Math.round(b.win_rate * 100), 0))}</strong> ·{" "}
+                    {t.gapRecord(b.wins, b.draws, b.losses)}
                   </div>
                 </>
               ) : (
-                <div className="mt-2 text-xs text-ivory-faint">Sin partidas</div>
+                <div className="mt-2 text-xs text-ivory-faint">{t.gapNone}</div>
               )}
             </div>
           );
@@ -150,23 +123,18 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
       {/* Lista */}
       <div className="mt-6">
         <Segmented<Filter>
-          ariaLabel="Filtrar partidas"
+          ariaLabel={t.filterAria}
           size="sm"
           value={filter}
           onChange={(f) => {
             setFilter(f);
             setExpanded(false);
           }}
-          options={[
-            { value: "all", label: "Todas", badge: counts.all },
-            { value: "thrown", label: "Ventaja escapada", badge: counts.thrown },
-            { value: "better_lost", label: "Mejor y perdiste", badge: counts.better_lost },
-            { value: "losses", label: "Derrotas", badge: counts.losses },
-          ]}
+          options={(Object.keys(FILTERS) as Filter[]).map((f) => ({ value: f, label: t.filters[f], badge: counts[f] }))}
         />
 
         {rows.length === 0 ? (
-          <p className="mt-4 text-sm text-ivory-faint">Ninguna partida con este filtro.</p>
+          <p className="mt-4 text-sm text-ivory-faint">{t.noneForFilter}</p>
         ) : (
           <ul className="mt-4 divide-y divide-ink-600/50 rounded-2xl border border-ink-600/60 bg-ink-900/40">
             {visible.map((g) => (
@@ -180,7 +148,7 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
             onClick={() => setExpanded((e) => !e)}
             className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brass-300 hover:text-brass-200"
           >
-            {expanded ? "Ver menos" : `Ver las ${rows.length} partidas`}
+            {expanded ? t.showLess : t.showAll(rows.length)}
             <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} aria-hidden />
           </button>
         )}
@@ -190,22 +158,24 @@ export function GamesOverview({ stats, games, username }: { stats?: GameStats | 
 }
 
 function GameRow({ game: g, username }: { game: GameRecap; username: string }) {
+  const { m, fmt, path } = useI18n();
+  const t = m.dashboard.games;
   const gap = g.opponent_rating - g.user_rating;
-  const date = g.end_time ? new Date(g.end_time * 1000).toLocaleDateString("es", { day: "numeric", month: "short" }) : null;
   const better = playedBetter(g);
+  const result = m.labels.result[g.result];
 
   return (
     <li className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <span
           className={cn("num flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-sm font-bold", RESULT_CHIP[g.result])}
-          title={RESULT_LABEL[g.result]}
+          title={result}
         >
-          {RESULT_LABEL[g.result].charAt(0)}
+          {result.charAt(0)}
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="truncate font-medium text-ivory">vs {g.opponent_username}</span>
+            <span className="truncate font-medium text-ivory">{t.vs(g.opponent_username)}</span>
             <span className="num text-xs text-ivory-faint">
               {g.user_rating} vs {g.opponent_rating}{" "}
               <span className={gap > 50 ? "text-rose-300" : gap < -50 ? "text-emerald-300" : ""}>
@@ -220,13 +190,13 @@ function GameRow({ game: g, username }: { game: GameRecap; username: string }) {
                 className={cn("h-2.5 w-2.5 rounded-full border", g.color === "white" ? "border-ivory-muted bg-[#f6f1e7]" : "border-ink-500 bg-ink-950")}
                 aria-hidden
               />
-              {g.color === "white" ? "Blancas" : "Negras"}
+              {g.color === "white" ? t.white : t.black}
             </span>
-            {date && <span>· {date}</span>}
+            {g.end_time > 0 && <span>· {fmt.shortDate(g.end_time)}</span>}
             <span className="max-w-[16rem] truncate" title={g.opening_name}>
               · {g.opening_name}
             </span>
-            <span>· {TERMINATION_LABEL[g.termination] ?? TERMINATION_LABEL.other}</span>
+            <span>· {m.labels.termination[g.termination] ?? m.labels.termination.other}</span>
           </div>
           <AdvantageNote game={g} />
         </div>
@@ -237,18 +207,13 @@ function GameRow({ game: g, username }: { game: GameRecap; username: string }) {
         <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5 md:ml-0">
           {g.advantage_lost_puzzle_id && (
             <Link
-              href={`/trainer?username=${encodeURIComponent(username)}&puzzle=${encodeURIComponent(g.advantage_lost_puzzle_id)}`}
+              href={path(`/trainer?username=${encodeURIComponent(username)}&puzzle=${encodeURIComponent(g.advantage_lost_puzzle_id)}`)}
               className="inline-flex items-center gap-1 text-xs font-semibold text-brass-300 hover:text-brass-200"
             >
-              <Target className="h-3.5 w-3.5" aria-hidden /> Ver el error
+              <Target className="h-3.5 w-3.5" aria-hidden /> {t.seeMistake}
             </Link>
           )}
-          <a
-            href={g.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-ivory-faint hover:text-brass-300"
-          >
+          <a href={g.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-ivory-faint hover:text-brass-300">
             Chess.com <ExternalLink className="h-3 w-3" aria-hidden />
           </a>
         </div>
@@ -258,13 +223,16 @@ function GameRow({ game: g, username }: { game: GameRecap; username: string }) {
 }
 
 function AdvantageNote({ game: g }: { game: GameRecap }) {
+  const { m, fmt } = useI18n();
+  const t = m.dashboard.games;
+  // ±10 es el tope (mate o ventaja aplastante): mejor decirlo con palabras
+  const amount = (n: number) => (Math.abs(n) >= 10 ? null : fmt.signed(n, 1));
   const notes: { text: string; tone: string }[] = [];
-  const at = g.advantage_lost_move ? ` en la jugada ${g.advantage_lost_move}` : "";
-  if (g.advantage === "converted") notes.push({ text: `Ventaja ${advText(g.max_eval)} convertida`, tone: "text-emerald-300" });
-  if (g.advantage === "thrown") notes.push({ text: `Ventaja ${advText(g.max_eval)} perdida${at}`, tone: "text-rose-300" });
-  if (g.advantage === "drawn") notes.push({ text: `Ventaja ${advText(g.max_eval)} que acabó en tablas${at}`, tone: "text-amber-300" });
-  if (g.disadvantage === "saved_win") notes.push({ text: Math.abs(g.min_eval) >= 10 ? "Remontada desde una posición perdida" : `Remontada desde ${signed(g.min_eval)}`, tone: "text-cyan-300" });
-  if (g.disadvantage === "saved_draw") notes.push({ text: Math.abs(g.min_eval) >= 10 ? "Tablas desde una posición perdida" : `Salvada en tablas desde ${signed(g.min_eval)}`, tone: "text-cyan-300" });
+  if (g.advantage === "converted") notes.push({ text: t.converted(amount(g.max_eval)), tone: "text-emerald-300" });
+  if (g.advantage === "thrown") notes.push({ text: t.thrown(amount(g.max_eval), g.advantage_lost_move), tone: "text-rose-300" });
+  if (g.advantage === "drawn") notes.push({ text: t.drawn(amount(g.max_eval), g.advantage_lost_move), tone: "text-amber-300" });
+  if (g.disadvantage === "saved_win") notes.push({ text: t.savedWin(amount(g.min_eval)), tone: "text-cyan-300" });
+  if (g.disadvantage === "saved_draw") notes.push({ text: t.savedDraw(amount(g.min_eval)), tone: "text-cyan-300" });
   if (!notes.length) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-x-3 text-xs font-medium">
@@ -278,7 +246,9 @@ function AdvantageNote({ game: g }: { game: GameRecap }) {
 }
 
 function AccuracyCompare({ you, rival, better }: { you: number | null; rival: number | null; better: boolean }) {
-  if (you === null) return <span className="text-xs text-ivory-faint">Sin precisión</span>;
+  const { m, fmt } = useI18n();
+  const t = m.dashboard.games;
+  if (you === null) return <span className="text-xs text-ivory-faint">{t.noAccuracy}</span>;
   const row = (label: string, v: number | null, color: string, strong: boolean) => (
     <div className="flex items-center gap-2">
       <span className={cn("w-10 text-[11px]", strong ? "font-semibold text-ivory" : "text-ivory-faint")}>{label}</span>
@@ -286,14 +256,14 @@ function AccuracyCompare({ you, rival, better }: { you: number | null; rival: nu
         <div className={cn("h-full rounded-full", color)} style={{ width: `${v ?? 0}%` }} />
       </div>
       <span className={cn("num w-9 text-right text-xs", strong ? "font-semibold text-ivory" : "text-ivory-muted")}>
-        {v === null ? "—" : num(v)}
+        {v === null ? "—" : fmt.num(v, 1)}
       </span>
     </div>
   );
   return (
-    <div className="space-y-1" title="Precisión según el motor (0-100)">
-      {row("Tú", you, "bg-brass-400", better)}
-      {row("Rival", rival, "bg-cyan-400/80", !better && rival !== null && rival > you)}
+    <div className="space-y-1" title={t.accuracyTitle}>
+      {row(t.you, you, "bg-brass-400", better)}
+      {row(t.opponent, rival, "bg-cyan-400/80", !better && rival !== null && rival > you)}
     </div>
   );
 }

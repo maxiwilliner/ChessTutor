@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import type { ProgressEvent } from "@/analysis/pipeline";
 import type { DataStore } from "./types";
+import { CodedError } from "@/lib/errors";
 
 export const remoteStore: DataStore = {
   mode: "full",
@@ -37,13 +38,21 @@ export const remoteStore: DataStore = {
       };
       sse.onerror = () => {
         sse.close();
-        reject(new Error("No se pudo conectar con el servidor de análisis. Comprueba que el backend esté en marcha."));
+        reject(
+          new CodedError("backend_unreachable", "No se pudo conectar con el servidor de análisis. Comprueba que el backend esté en marcha.")
+        );
       };
     });
   },
 
   getSummary,
-  getReport: getTutorReport,
+  // En español, el informe del backend (LLM o reglas). En inglés, el de reglas redactado en el navegador
+  // hasta que el backend acepte un idioma.
+  async getReport(username, lang = "es") {
+    if (lang === "es") return getTutorReport(username);
+    const [summary, { generateDeterministicTutorReport }] = await Promise.all([getSummary(username), import("@/analysis/tutor")]);
+    return generateDeterministicTutorReport(summary, lang);
+  },
   async getProfile(username) {
     try {
       return await getProfile(username);

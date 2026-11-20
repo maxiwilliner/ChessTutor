@@ -7,6 +7,7 @@ import { DrawShape } from "chessground/draw";
 import { ChessgroundBoard } from "./ChessgroundBoard";
 import { prefersReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 /** Trampa Blackburne-Shilling: 4.Nxe5?? parece ganar un peón y acaba en mate. */
 const START_FEN = "r1bqkbnr/pppp1ppp/8/4p3/2BnP3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
@@ -22,6 +23,7 @@ interface Frame {
 
 /** Tablero decorativo que reproduce en bucle un blunder y su castigo. */
 export function DemoBoard({ className }: { className?: string }) {
+  const { m } = useI18n();
   const frames = useMemo<Frame[]>(() => {
     const chess = new Chess(START_FEN);
     return LINE.map((uci) => {
@@ -75,13 +77,13 @@ export function DemoBoard({ className }: { className?: string }) {
 
   return (
     <figure ref={figureRef} className={cn("relative", className)}>
-      <div className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-brass-400/10 blur-2xl" aria-hidden />
+      <div className="pointer-events-none absolute -inset-x-2 -inset-y-6 rounded-[2rem] sm:-inset-6 bg-brass-400/10 blur-2xl" aria-hidden />
       <div className="relative">
         <ChessgroundBoard fen={fen} viewOnly shapes={shapes} lastMove={lastMove} showCoordinates={false}>
           {isMate && (
             <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center">
               <span className="animate-pop rounded-full border border-rose-400/40 bg-ink-950/85 px-3 py-1 text-xs font-semibold text-rose-200 backdrop-blur">
-                Jaque mate en 4 jugadas
+                {m.home.mateIn4}
               </span>
             </div>
           )}

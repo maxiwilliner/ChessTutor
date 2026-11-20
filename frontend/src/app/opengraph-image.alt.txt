@@ -1,1 +1,1 @@
-ChessTutor: deja de repetir los mismos errores. Análisis de tus partidas de Chess.com con Stockfish.
+ChessTutor: stop repeating the same mistakes. Your Chess.com games analyzed with Stockfish.

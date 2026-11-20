@@ -10,17 +10,19 @@ import {
   TrainerStatsResponse,
 } from "@/types/api";
 
+import { CodedError } from "@/lib/errors";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 export async function getProfile(username: string): Promise<PlayerProfile> {
   const res = await fetch(`${API_BASE}/chesscom/profile/${username}`);
-  if (!res.ok) throw new Error(`Usuario '${username}' no encontrado`);
+  if (!res.ok) throw new CodedError("user_not_found", `Usuario '${username}' no encontrado`, { username });
   return res.json();
 }
 
 export async function getSummary(username: string): Promise<PlayerDiagnosisSummary> {
   const res = await fetch(`${API_BASE}/analysis/summary/${username}`);
-  if (!res.ok) throw new Error("No se encontró análisis previo para este usuario");
+  if (!res.ok) throw new CodedError("no_analysis", "No se encontró análisis previo para este usuario");
   return res.json();
 }
 
@@ -45,13 +47,13 @@ export async function getPuzzles(username: string, filter?: GetPuzzlesFilter): P
 
   const queryString = query.toString() ? `?${query.toString()}` : "";
   const res = await fetch(`${API_BASE}/analysis/puzzles/${encodeURIComponent(username)}${queryString}`);
-  if (!res.ok) throw new Error("No se encontraron ejercicios");
+  if (!res.ok) throw new CodedError("no_puzzles", "No se encontraron ejercicios");
   return res.json();
 }
 
 export async function getTrainerStats(username: string, scope: "latest" | "all" = "all"): Promise<TrainerStatsResponse> {
   const res = await fetch(`${API_BASE}/trainer/stats/${encodeURIComponent(username)}?scope=${scope}`);
-  if (!res.ok) throw new Error("No se pudieron cargar las estadísticas del entrenador");
+  if (!res.ok) throw new CodedError("stats_failed", "No se pudieron cargar las estadísticas del entrenador");
   return res.json();
 }
 
@@ -61,7 +63,7 @@ export async function submitPuzzleAttempt(attempt: PuzzleAttemptRequest): Promis
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(attempt),
   });
-  if (!res.ok) throw new Error("Error registrando el intento del ejercicio");
+  if (!res.ok) throw new CodedError("attempt_failed", "Error registrando el intento del ejercicio");
   return res.json();
 }
 
@@ -71,13 +73,13 @@ export async function evaluateMove(req: EvaluateMoveRequest): Promise<EvaluateMo
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error("Error evaluando la jugada alternativa");
+  if (!res.ok) throw new CodedError("evaluate_failed", "Error evaluando la jugada alternativa");
   return res.json();
 }
 
 export async function getTutorReport(username: string): Promise<TutorPedagogicalReport> {
   const res = await fetch(`${API_BASE}/tutor/report/${username}`);
-  if (!res.ok) throw new Error("No se pudo generar el reporte del tutor");
+  if (!res.ok) throw new CodedError("report_failed", "No se pudo generar el reporte del tutor");
   return res.json();
 }
 

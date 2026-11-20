@@ -30,7 +30,19 @@ export interface Engine {
   dispose(): void;
 }
 
-export class EngineError extends Error {}
+export type EngineErrorCode = "engine_start" | "engine_timeout" | "engine_stopped";
+
+/** El mensaje queda en español para registros; la interfaz usa `code` (ver `errorText`). */
+export class EngineError extends Error {
+  constructor(
+    message: string,
+    readonly code: EngineErrorCode = "engine_start"
+  ) {
+    super(message);
+  }
+}
+
+const ENGINE_TIMEOUT = "El motor de análisis dejó de responder. Recarga la página e inténtalo de nuevo.";
 
 export const ENGINE_START_TIMEOUT_MS = 20_000;
 /** Margen sobre `movetime` para una sola posición (la profundidad puede alargarla en máquinas lentas). */
@@ -66,9 +78,10 @@ class Slot {
       }
     });
     proc.onError?.((err) => this.kill(new EngineError(`${START_FAILED} (${err.message})`)));
-    this.ready = this.until("uci", (l) => l === "uciok", undefined, startTimeoutMs, START_FAILED).then(() => {
+    const startFailed = () => new EngineError(START_FAILED, "engine_start");
+    this.ready = this.until("uci", (l) => l === "uciok", undefined, startTimeoutMs, startFailed).then(() => {
       proc.send("setoption name Hash value 16");
-      return this.until("isready", (l) => l === "readyok", undefined, startTimeoutMs, START_FAILED);
+      return this.until("isready", (l) => l === "readyok", undefined, startTimeoutMs, startFailed);
     });
     this.ready.catch(() => undefined); // el error se entrega a quien use el slot
   }
@@ -87,10 +100,16 @@ class Slot {
   }
 
   /** Envía un comando y espera la línea que cumpla `done`, con tiempo máximo. */
-  until(command: string, done: (l: string) => boolean, onOther: ((l: string) => void) | undefined, timeoutMs: number, timeoutMsg: string) {
+  until(
+    command: string,
+    done: (l: string) => boolean,
+    onOther: ((l: string) => void) | undefined,
+    timeoutMs: number,
+    onTimeout: () => EngineError
+  ) {
     if (this.dead) return Promise.reject(this.dead);
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => this.kill(new EngineError(timeoutMsg)), timeoutMs);
+      const timer = setTimeout(() => this.kill(onTimeout()), timeoutMs);
       this.waiting = {
         done,
         onOther,
@@ -120,7 +139,7 @@ class Slot {
         if (info) last = info;
       },
       moveTimeoutMs + (limits.movetime ?? 0),
-      "El motor de análisis dejó de responder. Recarga la página e inténtalo de nuevo."
+      () => new EngineError(ENGINE_TIMEOUT, "engine_timeout")
     );
     return toEvaluation(fen, limits.depth, last);
   }
@@ -223,8 +242,8 @@ export class EnginePool implements Engine {
   }
 
   dispose() {
-    this.queue.forEach((j) => j.reject(new EngineError("Motor detenido")));
+    this.queue.forEach((j) => j.reject(new EngineError("Motor detenido", "engine_stopped")));
     this.queue = [];
-    this.slots.forEach((s) => s.kill(new EngineError("Motor detenido")));
+    this.slots.forEach((s) => s.kill(new EngineError("Motor detenido", "engine_stopped")));
   }
 }

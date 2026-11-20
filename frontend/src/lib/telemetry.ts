@@ -13,6 +13,13 @@ let sentry: SentryModule | null = null;
 let starting: Promise<void> | null = null;
 /** Errores ocurridos antes de que cargue el SDK. */
 const queue: [unknown, Record<string, string>][] = [];
+let currentLang = "";
+
+/** Idioma de la interfaz como etiqueta de los informes. */
+export function setTelemetryLang(lang: string) {
+  currentLang = lang;
+  sentry?.setTag("lang", lang);
+}
 
 /** Quita nombres de usuario: parámetros `username=` y rutas de la API de Chess.com (`/player/<nombre>`). */
 export function scrubText(text: string): string {
@@ -63,7 +70,7 @@ export function initTelemetry() {
         beforeSend: (event) => scrubDeep(event),
         beforeBreadcrumb: (crumb) => scrubDeep(crumb),
       });
-      S.setTags(deviceTags());
+      S.setTags({ ...deviceTags(), ...(currentLang ? { lang: currentLang } : {}) });
       sentry = S;
       for (const [err, tags] of queue.splice(0)) S.captureException(err, { tags });
     })

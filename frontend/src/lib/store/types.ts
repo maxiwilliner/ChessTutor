@@ -10,6 +10,7 @@ import type {
 } from "@/types/api";
 import type { GetPuzzlesFilter } from "@/lib/api";
 import type { ProgressEvent } from "@/analysis/pipeline";
+import type { Lang } from "@/lib/i18n/paths";
 
 export type AppMode = "demo" | "full";
 
@@ -31,7 +32,8 @@ export interface DataStore {
   /** Lanza el análisis; resuelve al terminar o rechaza con un mensaje en español. */
   analyze(params: AnalyzeParams): Promise<void>;
   getSummary(username: string): Promise<PlayerDiagnosisSummary>;
-  getReport(username: string): Promise<TutorPedagogicalReport>;
+  /** Informe del profesor en el idioma de la interfaz. */
+  getReport(username: string, lang?: Lang): Promise<TutorPedagogicalReport>;
   getProfile(username: string): Promise<PlayerProfile | null>;
   getPuzzles(username: string, filter?: GetPuzzlesFilter): Promise<BlunderBankItem[]>;
   /** `scope="latest"`: cifras del último análisis; los repasos pendientes siempre son de todo el banco. */

@@ -39,9 +39,3 @@ export function estimateSeconds(games: number): number {
     : (DESKTOP_SECONDS_PER_GAME_4_ENGINES * 4) / engines;
   return Math.max(5, Math.round((DOWNLOAD_SECONDS + games * perGame) / 5) * 5);
 }
-
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `~${seconds} s`;
-  const min = Math.round(seconds / 60);
-  return `~${min} min`;
-}

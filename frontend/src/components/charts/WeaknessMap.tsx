@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PhaseDistribution, TacticalMotifDetail } from "@/types/api";
 import { Card, SectionHeader } from "@/components/ui/Card";
-import { PHASE_LABEL, themeMeta, TRAINER_THEMES } from "@/lib/labels";
+import { themeMeta, TRAINER_THEMES } from "@/lib/labels";
+import { useI18n } from "@/lib/i18n";
 import { Map as MapIcon, ArrowUpRight } from "lucide-react";
 
 interface WeaknessMapProps {
@@ -23,6 +24,9 @@ const PHASE_COLORS: Record<string, string> = {
 const MOTIF_COLORS = ["#FB7185", "#F59E0B", "#DDB463", "#67E8F9", "#A78BFA", "#8A8479"];
 
 export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
+  const { m: msg, fmt, path } = useI18n();
+  const t = msg.dashboard.weakness;
+  const phaseLabel = (k: string) => msg.labels.phase[k] ?? k;
   const phaseRows = (["opening", "middlegame", "endgame"] as const).map((k) => ({ key: k, ...phases[k] }));
   const totalBlunders = phaseRows.reduce((s, p) => s + p.blunders, 0);
   const worstPhase = [...phaseRows].sort((a, b) => b.percentage_of_blunders - a.percentage_of_blunders)[0];
@@ -30,7 +34,8 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
   const motifRows = Object.entries(motifs)
     .filter(([, m]) => m.count > 0)
     .sort((a, b) => b[1].count - a[1].count)
-    .map(([key, m]) => ({ key, label: themeMeta(key).label, ...m }));
+    // La descripción sale del diccionario (la guardada en el resumen está en español)
+    .map(([key, m]) => ({ ...m, key, label: themeMeta(key, msg).label, description: themeMeta(key, msg).description }));
 
   // El enlace apunta al motivo entrenable más frecuente (la "imprecisión táctica" genérica no es un filtro del entrenador).
   const trainable = motifRows.find((r) => TRAINER_THEMES.some((t) => t.key === r.key));
@@ -39,20 +44,20 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
     <Card className="p-5 sm:p-7">
       <SectionHeader
         icon={MapIcon}
-        eyebrow="Mapa de debilidades"
-        title="Dónde pierdes Elo"
-        subtitle="En qué fase de la partida y con qué motivo táctico aparecen tus blunders."
+        eyebrow={t.eyebrow}
+        title={t.title}
+        subtitle={t.subtitle}
       />
 
       <div className="mt-6 grid gap-8 lg:grid-cols-5">
         {/* Fases */}
         <div className="lg:col-span-2">
-          <h3 className="text-sm font-semibold text-ivory">Por fase de la partida</h3>
+          <h3 className="text-sm font-semibold text-ivory">{t.byPhase}</h3>
           {totalBlunders === 0 ? (
-            <p className="mt-3 text-sm text-ivory-faint">Sin blunders registrados. ¡Excelente!</p>
+            <p className="mt-3 text-sm text-ivory-faint">{t.noBlunders}</p>
           ) : (
             <>
-              <div className="mt-3 flex h-4 w-full overflow-hidden rounded-full bg-ink-750" role="img" aria-label="Distribución de blunders por fase">
+              <div className="mt-3 flex h-4 w-full overflow-hidden rounded-full bg-ink-750" role="img" aria-label={t.phaseAria}>
                 {phaseRows.map(
                   (p) =>
                     p.percentage_of_blunders > 0 && (
@@ -60,7 +65,7 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
                         key={p.key}
                         className="h-full transition-[width] duration-700 first:rounded-l-full last:rounded-r-full"
                         style={{ width: `${p.percentage_of_blunders}%`, background: PHASE_COLORS[p.key] }}
-                        title={`${PHASE_LABEL[p.key]}: ${p.percentage_of_blunders}%`}
+                        title={`${phaseLabel(p.key)}: ${fmt.pct(p.percentage_of_blunders)}`}
                       />
                     )
                 )}
@@ -70,14 +75,14 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
                   <li key={p.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
                     <span className="flex items-center gap-2 whitespace-nowrap text-ivory-muted">
                       <span className="h-2.5 w-2.5 rounded-sm" style={{ background: PHASE_COLORS[p.key] }} aria-hidden />
-                      {PHASE_LABEL[p.key]}
+                      {phaseLabel(p.key)}
                       {p.key === worstPhase.key && p.percentage_of_blunders > 0 && (
-                        <span className="rounded-full bg-rose-500/15 px-1.5 text-[10px] font-semibold text-rose-300">mayor fuga</span>
+                        <span className="rounded-full bg-rose-500/15 px-1.5 text-[10px] font-semibold text-rose-300">{t.biggest}</span>
                       )}
                     </span>
                     <span className="num text-xs text-ivory-faint">
-                      <strong className="text-sm font-semibold text-ivory">{p.percentage_of_blunders}%</strong> · {p.blunders} blunders ·{" "}
-                      {p.avg_cpl} CPL
+                      <strong className="text-sm font-semibold text-ivory">{fmt.pct(p.percentage_of_blunders)}</strong> ·{" "}
+                      {t.phaseRow(p.blunders, fmt.numMax(p.avg_cpl, 1))}
                     </span>
                   </li>
                 ))}
@@ -89,18 +94,18 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
         {/* Motivos tácticos */}
         <div className="lg:col-span-3">
           <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-sm font-semibold text-ivory">Por motivo táctico</h3>
+            <h3 className="text-sm font-semibold text-ivory">{t.byMotif}</h3>
             {trainable && (
               <Link
-                href={`/trainer?username=${encodeURIComponent(username)}&mode=theme&theme=${trainable.key}`}
+                href={path(`/trainer?username=${encodeURIComponent(username)}&mode=theme&theme=${trainable.key}`)}
                 className="flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-brass-300 hover:text-brass-200"
               >
-                Entrenar {trainable.label.toLowerCase()} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                {t.train(trainable.label)} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
             )}
           </div>
           {motifRows.length === 0 ? (
-            <p className="mt-3 text-sm text-ivory-faint">Sin motivos tácticos detectados.</p>
+            <p className="mt-3 text-sm text-ivory-faint">{t.noMotifs}</p>
           ) : (
             <div className="mt-3" style={{ height: Math.max(140, motifRows.length * 44) }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -122,9 +127,7 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
                       return (
                         <div className="max-w-xs rounded-xl border border-ink-500 bg-ink-850 p-3 text-xs shadow-card">
                           <div className="font-semibold text-ivory">{d.label}</div>
-                          <div className="num mt-0.5 text-brass-300">
-                            {d.count} blunders · {d.percentage_of_blunders}%
-                          </div>
+                          <div className="num mt-0.5 text-brass-300">{t.tooltip(d.count, fmt.pct(d.percentage_of_blunders))}</div>
                           {d.description && <p className="mt-1.5 text-ivory-muted">{d.description}</p>}
                         </div>
                       );
@@ -137,7 +140,7 @@ export function WeaknessMap({ phases, motifs, username }: WeaknessMapProps) {
                     <LabelList
                       dataKey="percentage_of_blunders"
                       position="right"
-                      formatter={(v: number) => `${v}%`}
+                      formatter={(v: number) => fmt.pct(v)}
                       style={{ fill: "#F3EDE2", fontSize: 12, fontFamily: "var(--font-mono)" }}
                     />
                   </Bar>

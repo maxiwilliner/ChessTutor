@@ -51,7 +51,7 @@ describe("cliente de Chess.com en el navegador", () => {
     expect(games.map((g) => g.black_username)).toEqual(["m7", "m3"]);
     // Dos lotes de 3 meses (7-6-5 y 4-3-2): el mes 1 no hace falta
     expect(requested.filter((u) => u.includes("/games/2026/"))).toHaveLength(2 * MONTHS_PER_BATCH);
-    expect(seen).toEqual(["may 2026", "feb 2026"]);
+    expect(seen).toEqual(["2026-05", "2026-02"]);
   });
 
   it("sin partidas puntuadas del ritmo solo mira los 3 meses más recientes", async () => {

@@ -5,17 +5,23 @@
 import type { BlunderBankItem, PlayerDiagnosisSummary, TutorPedagogicalReport } from "@/types/api";
 import type { Engine } from "./engine/pool";
 import type { EvaluatedMove, NormalizedGame } from "./types";
-import { getRecentGames } from "./chesscom";
+import { archiveLabel, getRecentGames } from "./chesscom";
+import { CodedError, type ErrorParams } from "@/lib/errors";
 import { evaluateGameSmart, DEFAULT_DEPTH, type AnalysisDepth, type EvalCache } from "./evaluator";
 import { assembleDiagnosisAndPuzzles } from "./aggregator";
 import { generateDeterministicTutorReport } from "./tutor";
 
 export interface ProgressEvent {
   stage: "fetching_games" | "evaluating_start" | "evaluating" | "classifying" | "complete" | "error";
+  /** En español (como el SSE del backend); la interfaz compone su propio texto con los campos de abajo. */
   message: string;
   progress_pct: number;
   current_game?: number;
   total_games?: number;
+  /** Mes que se está revisando, "2026-10". */
+  month?: string;
+  /** Blancas y negras de la partida que se evalúa. */
+  players?: [string, string];
 }
 
 export interface AnalysisResult {
@@ -25,8 +31,11 @@ export interface AnalysisResult {
   report: TutorPedagogicalReport;
 }
 
-export class AnalysisError extends Error {
-  override name = "AnalysisError";
+/** Sin partidas del ritmo pedido: es un error del usuario, no de la app (no va a Sentry). */
+export class AnalysisError extends CodedError {
+  constructor(message: string, params: ErrorParams) {
+    super("no_games", message, params, "AnalysisError");
+  }
 }
 
 const PACE_ES: Record<string, string> = { rapid: "rápidas", blitz: "de blitz", bullet: "de bullet", daily: "diarias" };
@@ -49,10 +58,18 @@ export async function runAnalysis(opts: {
 
   emit({ stage: "fetching_games", message: `Descargando partidas recientes de ${username}...`, progress_pct: 5 });
   const games = await getRecentGames(username, timeClass, limit, signal, (month) =>
-    emit({ stage: "fetching_games", message: `Buscando partidas de ${username} en ${month}...`, progress_pct: 5 })
+    emit({
+      stage: "fetching_games",
+      message: `Buscando partidas de ${username} en ${archiveLabel(month.replace("-", "/"))}...`,
+      progress_pct: 5,
+      month,
+    })
   );
   if (!games.length) {
-    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} recientes en Chess.com. Prueba con otro ritmo.`);
+    throw new AnalysisError(`${username} no tiene partidas ${PACE_ES[timeClass] ?? timeClass} recientes en Chess.com. Prueba con otro ritmo.`, {
+      username,
+      timeClass,
+    });
   }
 
   const total = games.length;
@@ -68,6 +85,7 @@ export async function runAnalysis(opts: {
       progress_pct: 10 + Math.floor(((i + 1) / total) * 75),
       current_game: i + 1,
       total_games: total,
+      players: [g.white_username, g.black_username],
     });
     evaluated.push(await evaluateGameSmart(g, engine, depth, cache, signal));
   }

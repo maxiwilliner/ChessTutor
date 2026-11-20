@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "Entrenador",
-  description: "Resuelve las posiciones reales donde cometiste blunders, con pistas progresivas y repetición espaciada.",
-};
+export const metadata = pageMetadata("en", "trainer");
 
 export default function TrainerLayout({ children }: { children: React.ReactNode }) {
   return children;

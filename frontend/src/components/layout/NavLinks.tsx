@@ -6,19 +6,24 @@ import { usePathname } from "next/navigation";
 import { Home, LineChart, Target } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useLastUsername } from "@/lib/useLastUsername";
+import { useI18n } from "@/lib/i18n";
+import { stripLang } from "@/lib/i18n/paths";
 
 const ITEMS = [
-  { href: "/", label: "Inicio", icon: Home, withUser: false },
-  { href: "/dashboard", label: "Diagnóstico", icon: LineChart, withUser: true },
-  { href: "/trainer", label: "Entrenador", icon: Target, withUser: true },
+  { href: "/", key: "home", icon: Home, withUser: false },
+  { href: "/dashboard", key: "dashboard", icon: LineChart, withUser: true },
+  { href: "/trainer", key: "trainer", icon: Target, withUser: true },
 ] as const;
 
 function useNavItems() {
-  const pathname = usePathname();
+  const { m, path } = useI18n();
+  // La pestaña activa se calcula sin el prefijo de idioma
+  const pathname = stripLang(usePathname() ?? "/");
   const [lastUser] = useLastUsername();
   return ITEMS.map((item) => ({
     ...item,
-    url: item.withUser && lastUser ? `${item.href}?username=${encodeURIComponent(lastUser)}` : item.href,
+    label: m.nav[item.key],
+    url: path(item.withUser && lastUser ? `${item.href}?username=${encodeURIComponent(lastUser)}` : item.href),
     active: item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
   }));
 }
@@ -26,8 +31,9 @@ function useNavItems() {
 /** Navegación superior (escritorio / tablet). */
 export function NavLinks() {
   const items = useNavItems();
+  const { m } = useI18n();
   return (
-    <nav aria-label="Principal" className="hidden items-center gap-1 sm:flex">
+    <nav aria-label={m.nav.main} className="hidden items-center gap-1 sm:flex">
       {items.map(({ url, label, icon: Icon, active }) => (
         <Link
           key={label}
@@ -50,9 +56,10 @@ export function NavLinks() {
 /** Barra de pestañas inferior para móvil. */
 export function MobileTabBar() {
   const items = useNavItems();
+  const { m } = useI18n();
   return (
     <nav
-      aria-label="Principal"
+      aria-label={m.nav.main}
       className="fixed inset-x-0 bottom-0 z-50 border-t border-ink-600/80 bg-ink-900/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg sm:hidden"
     >
       <div className="mx-auto grid max-w-md grid-cols-3">

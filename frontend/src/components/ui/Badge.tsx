@@ -1,6 +1,9 @@
+"use client";
+
 import React from "react";
 import { cn } from "@/lib/cn";
-import { SEVERITY_LABEL, type Severity } from "@/lib/labels";
+import type { Severity } from "@/lib/labels";
+import { useI18n } from "@/lib/i18n";
 
 export type Tone = "neutral" | "brass" | "emerald" | "rose" | "amber" | "cyan" | "violet";
 
@@ -55,9 +58,10 @@ export const SEVERITY_STRIPE: Record<Severity, string> = {
 };
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
+  const { m } = useI18n();
   return (
     <Badge tone={SEVERITY_TONE[severity] ?? "neutral"} className="uppercase tracking-wider">
-      {SEVERITY_LABEL[severity] ?? severity}
+      {m.labels.severity[severity] ?? severity}
     </Badge>
   );
 }

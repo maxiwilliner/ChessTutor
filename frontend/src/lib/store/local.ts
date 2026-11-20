@@ -11,6 +11,7 @@ import { getProfile } from "@/analysis/chesscom";
 import { getBrowserEngine } from "@/analysis/engine/browser";
 import { adaptiveDepth, isLowPowerDevice } from "@/analysis/device";
 import { ANALYSIS_VERSION } from "@/analysis/version";
+import { CodedError } from "@/lib/errors";
 import { applyAttempt, evaluateAlternativeMove, selectPuzzles, trainerStats, progressKey } from "./trainerLogic";
 import { getLocalBackend, resetLocalBackend, type LocalBackend } from "./localBackend";
 import type { AnalyzeParams, DataStore } from "./types";
@@ -55,9 +56,12 @@ async function withAnalysisLock<T>(fn: () => Promise<T>): Promise<T> {
   if (!locks?.request) return fn();
   return locks.request(LOCK_NAME, { ifAvailable: true }, async (lock) => {
     if (!lock) {
-      const err = new Error("Ya hay un análisis en marcha en otra pestaña. Espera a que termine o ciérrala y vuelve a intentarlo.");
-      err.name = "AnalysisLocked";
-      throw err;
+      throw new CodedError(
+        "analysis_locked",
+        "Ya hay un análisis en marcha en otra pestaña. Espera a que termine o ciérrala y vuelve a intentarlo.",
+        {},
+        "AnalysisLocked"
+      );
     }
     return fn();
   });
@@ -105,7 +109,10 @@ async function saveAnalysis(username: string, a: AnalysisToSave) {
     await b.writePuzzles(a.puzzles.map((p) => ({ ...p, username: u })), stale);
   } catch (e) {
     if (isQuotaError(e)) {
-      throw new Error("Tu navegador no tiene espacio para guardar el análisis. Libera espacio o borra los datos de la demo (al pie de la página).");
+      throw new CodedError(
+        "storage_full",
+        "Tu navegador no tiene espacio para guardar el análisis. Libera espacio o borra los datos de la demo (al pie de la página)."
+      );
     }
     throw e;
   }
@@ -136,9 +143,12 @@ async function loadUser(b: LocalBackend, username: string) {
 
 async function currentAnalysis(username: string) {
   const a = await (await getLocalBackend()).getAnalysis(norm(username));
-  if (!a) throw new Error("No hay un análisis guardado para este usuario en este navegador.");
+  if (!a) throw new CodedError("no_analysis", "No hay un análisis guardado para este usuario en este navegador.");
   if (a.analysis_version !== ANALYSIS_VERSION) {
-    throw new Error("Mejoramos el análisis desde tu última visita: vuelve a analizar tus partidas (tu progreso en los ejercicios se conserva).");
+    throw new CodedError(
+      "analysis_outdated",
+      "Mejoramos el análisis desde tu última visita: vuelve a analizar tus partidas (tu progreso en los ejercicios se conserva)."
+    );
   }
   return a;
 }
@@ -189,7 +199,11 @@ export const localStore: DataStore = {
   },
 
   getSummary: async (username) => (await currentAnalysis(username)).summary,
-  getReport: async (username) => (await currentAnalysis(username)).report,
+  // El informe por reglas se redacta al mostrarlo, en el idioma de la interfaz (en español es igual al guardado)
+  async getReport(username, lang = "es") {
+    const [{ summary }, { generateDeterministicTutorReport }] = await Promise.all([currentAnalysis(username), import("@/analysis/tutor")]);
+    return generateDeterministicTutorReport(summary, lang);
+  },
 
   async getProfile(username) {
     try {
@@ -202,7 +216,7 @@ export const localStore: DataStore = {
   async getPuzzles(username, filter) {
     const b = await getLocalBackend();
     const { puzzles, progress } = await loadUser(b, username);
-    if (!puzzles.length) throw new Error("No hay ejercicios: analiza primero tus partidas.");
+    if (!puzzles.length) throw new CodedError("no_puzzles", "No hay ejercicios: analiza primero tus partidas.");
     const latestIds = filter?.scope === "all" ? undefined : (await b.getAnalysis(norm(username)))?.puzzle_ids;
     return selectPuzzles(puzzles, progress, filter, new Date(), latestIds);
   },
